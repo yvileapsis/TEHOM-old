@@ -1,4 +1,5 @@
-﻿namespace MyGame
+﻿namespace Tehom
+
 open System
 open Prime
 open Nu
@@ -16,9 +17,10 @@ module Gameplay =
     // this model representation uses update time, that is, time based on number of engine updates.
     // if you wish to use clock time instead (https://github.com/bryanedds/Nu/wiki/GameTime-and-its-Polymorphic-Nature),
     // you could use `Time : single` instead.
-    type Gameplay =
-        { Time : int64
-          State : GameplayState }
+    type Gameplay = {
+        Time : int64
+        State : GameplayState 
+    }
 
     // this is our MMCC message type.
     type GameplayMessage =
@@ -39,9 +41,10 @@ module Gameplay =
         inherit ScreenDispatcher<Gameplay, GameplayMessage, Command> ({ Time = 0; State = Quit })
 
         // here we define the screen's properties and event handling
-        override this.Initialize (_, _) =
-            [Screen.UpdateEvent => Update
-             Screen.DeselectingEvent => FinishQuitting]
+        override this.Initialize (_, _) = [
+            Screen.UpdateEvent => Update
+            Screen.DeselectingEvent => FinishQuitting
+        ]
 
         // here we handle the above messages
         override this.Message (gameplay, message, _, _) =
@@ -54,27 +57,28 @@ module Gameplay =
                 just { gameplay with State = Quit }
 
         // here we describe the content of the game including the level, the hud, and the player
-        override this.Content (gameplay, _) =
+        override this.Content (gameplay, _) = [// the gui group
 
-            [// the gui group
-             Content.group Simulants.GameplayGui.Name []
-
-                [// time
-                 Content.text Simulants.GameplayTime.Name
-                    [Entity.Position == v3 0.0f 232.0f 0.0f
-                     Entity.Elevation == 10.0f
-                     Entity.Justification == Justified (JustifyCenter, JustifyMiddle)
-                     Entity.Text := string gameplay.Time]
+            Content.group Simulants.GameplayGui.Name [] [// time
+ 
+                Content.text Simulants.GameplayTime.Name [
+                    Entity.Position == v3 0.0f 232.0f 0.0f
+                    Entity.Elevation == 10.0f
+                    Entity.Justification == Justified (JustifyCenter, JustifyMiddle)
+                    Entity.Text := string gameplay.Time
+                ]
                  
-                 // quit
-                 Content.button Simulants.GameplayQuit.Name
-                    [Entity.Position == v3 336.0f -216.0f 0.0f
-                     Entity.Elevation == 10.0f
-                     Entity.Text == "Quit"
-                     Entity.ClickEvent => StartQuitting]]
+                // quit
+                Content.button Simulants.GameplayQuit.Name [
+                    Entity.Position == v3 336.0f -216.0f 0.0f
+                    Entity.Elevation == 10.0f
+                    Entity.Text == "Quit"
+                    Entity.ClickEvent => StartQuitting
+                ]
+            ]
 
-             // the scene group while playing or quitting
-             match gameplay.State with
-             | Playing | Quitting ->
+            // the scene group while playing or quitting
+            match gameplay.State with
+            | Playing | Quitting ->
                 Content.groupFromFile Simulants.GameplayScene.Name "Assets/Gameplay/Scene.nugroup" [] []
-             | Quit -> ()]
+            | Quit -> ()]

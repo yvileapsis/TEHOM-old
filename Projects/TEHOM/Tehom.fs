@@ -1,10 +1,11 @@
-﻿namespace MyGame
+﻿namespace Tehom
+
 open System
 open Prime
 open Nu
 
 [<AutoOpen>]
-module MyGame =
+module Tehom =
 
     // this is our MMCC model type. It determines what state the game is in. To learn about MMCC in
     // Nu, see here - https://github.com/bryanedds/Nu/wiki/Model-View-Update-for-Games-via-MMCC
@@ -36,12 +37,12 @@ module MyGame =
 
     // this is the game dispatcher that is customized for our game. In here, we create screens as
     // content and bind them up with events and properties.
-    type MyGameDispatcher () =
+    type TehomDispatcher () =
         inherit GameDispatcher<Model, Message, Command> (Splash)
 
         // here we define the game's properties and event handling
-        override this.Initialize (model, _) =
-            [Game.DesiredScreen :=
+        override this.Initialize (model, _) = [
+            Game.DesiredScreen :=
                 match model with
                 | Splash -> Desire Simulants.Splash
                 | Title -> Desire Simulants.Title
@@ -50,13 +51,14 @@ module MyGame =
                     match gameplay.State with
                     | Playing -> Desire Simulants.Gameplay
                     | Quitting | Quit -> Desire Simulants.Title
-             match model with Gameplay gameplay -> Simulants.Gameplay.Gameplay := gameplay | _ -> ()
-             Game.UpdateEvent => Update
-             Simulants.Splash.DeselectingEvent => ShowTitle
-             Simulants.TitleCredits.ClickEvent => ShowCredits
-             Simulants.TitlePlay.ClickEvent => ShowGameplay
-             Simulants.TitleExit.ClickEvent => Exit
-             Simulants.CreditsBack.ClickEvent => ShowTitle]
+            match model with Gameplay gameplay -> Simulants.Gameplay.Gameplay := gameplay | _ -> ()
+            Game.UpdateEvent => Update
+            Simulants.Splash.DeselectingEvent => ShowTitle
+            Simulants.TitleCredits.ClickEvent => ShowCredits
+            Simulants.TitlePlay.ClickEvent => ShowGameplay
+            Simulants.TitleExit.ClickEvent => Exit
+            Simulants.CreditsBack.ClickEvent => ShowTitle
+        ]
 
         // here we handle the above messages
         override this.Message (model, message, _, world) =
@@ -80,8 +82,9 @@ module MyGame =
                 else just world
 
         // here we describe the content of the game, including all of its screens.
-        override this.Content (_, _) =
-            [Content.screen Simulants.Splash.Name (Slide (Constants.Dissolve.Default, Constants.Slide.Default, None, Simulants.Title)) [] []
-             Content.screenWithGroupFromFile Simulants.Title.Name (Dissolve (Constants.Dissolve.Default, None)) "Assets/Gui/Title.nugroup" [] []
-             Content.screenWithGroupFromFile Simulants.Credits.Name (Dissolve (Constants.Dissolve.Default, None)) "Assets/Gui/Credits.nugroup" [] []
-             Content.screen<GameplayDispatcher> Simulants.Gameplay.Name (Dissolve (Constants.Dissolve.Default, None)) [] []]
+        override this.Content (_, _) = [
+            Content.screen Simulants.Splash.Name (Slide (Constants.Dissolve.Default, Constants.Slide.Default, None, Simulants.Title)) [] []
+            Content.screenWithGroupFromFile Simulants.Title.Name (Dissolve (Constants.Dissolve.Default, None)) "Assets/Gui/Title.nugroup" [] []
+            Content.screenWithGroupFromFile Simulants.Credits.Name (Dissolve (Constants.Dissolve.Default, None)) "Assets/Gui/Credits.nugroup" [] []
+            Content.screen<GameplayDispatcher> Simulants.Gameplay.Name (Dissolve (Constants.Dissolve.Default, None)) [] []
+        ]

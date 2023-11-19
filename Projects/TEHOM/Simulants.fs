@@ -1,4 +1,5 @@
-﻿namespace MyGame
+﻿namespace Tehom
+
 open System
 open Prime
 open Nu

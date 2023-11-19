@@ -1,0 +1,21 @@
+[GroupDispatcher
+ [[Model ["Microsoft.FSharp.Core.Unit, FSharp.Core, Version=8.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a" []]]
+  [Name Gui]
+  [Persistent True]
+  [Visible True]]
+ [[TextDispatcher
+   [[Elevation 10]
+    [Justification [Justified JustifyCenter JustifyMiddle]]
+    [Name Time]
+    [Position [0 232 0]]
+    [Text 0]]
+   []]
+  [ButtonDispatcher
+   [[Elevation 10]
+    [Name Quit]
+    [Position [336 -216 0]]
+    [Text Quit]]
+   []]
+  [TextDispatcher
+   [[Name Text-0001] [Text "Hello world!"]]
+   []]]]

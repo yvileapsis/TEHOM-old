@@ -1,14 +1,16 @@
-﻿namespace MyGame
+﻿namespace Tehom
+
 open System
 open System.IO
 open Nu
+
 module Program =
 
     // this the entry point for your Nu application
     let [<EntryPoint; STAThread>] main _ =
 
         // this specifies the window configuration used to display the game
-        let sdlWindowConfig = { SdlWindowConfig.defaultConfig with WindowTitle = "MyGame" }
+        let sdlWindowConfig = { SdlWindowConfig.defaultConfig with WindowTitle = "TEHOM" }
         
         // this specifies the configuration of the game engine's use of SDL
         let sdlConfig = { SdlConfig.defaultConfig with ViewConfig = NewWindow sdlWindowConfig }
@@ -21,6 +23,8 @@ module Program =
 
         // initialize Nu
         Nu.init worldConfig.NuConfig
+
+//      YamlReader.ReadDefaultData ()
 
         // run the engine with the given config and plugin
         World.run worldConfig (MyGamePlugin ())
