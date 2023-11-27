@@ -12,7 +12,7 @@ open SDL2
 open ImGuiNET
 open Prime
 
-[<AutoOpen; ModuleBinding>]
+[<AutoOpen>]
 module WorldModule2 =
 
     (* Frame Pacing Timer *)
@@ -87,7 +87,7 @@ module WorldModule2 =
             let quadtree = World.makeQuadtree ()
             for entity in entities do
                 let bounds = entity.GetBounds world
-                let visible = entity.GetVisible world
+                let visible = entity.GetVisible world || entity.GetAlwaysRender world
                 let presence = entity.GetPresence world
                 if entity.GetIs2d world then
                     let element = Quadelement.make visible entity
@@ -107,7 +107,7 @@ module WorldModule2 =
             let octree = World.makeOctree ()
             for entity in entities do
                 let bounds = entity.GetBounds world
-                let visible = entity.GetVisible world
+                let visible = entity.GetVisible world || entity.GetAlwaysRender world
                 let static_ = entity.GetStatic world
                 let lightProbe = entity.GetLightProbe world
                 let light = entity.GetLight world
@@ -135,26 +135,22 @@ module WorldModule2 =
                 World.setSelectedScreenOpt None world
 
         /// Select the given screen without transitioning, even if another transition is taking place.
-        [<FunctionBinding>]
         static member selectScreen transitionState screen world =
             World.selectScreenOpt (Some (transitionState, screen)) world
 
         /// Try to check that the selected screen is idling; that is, neither transitioning in or
         /// out via another screen.
-        [<FunctionBinding>]
         static member tryGetSelectedScreenIdling world =
             match World.getSelectedScreenOpt world with
             | Some selectedScreen -> Some (selectedScreen.Idling world)
             | None -> None
 
         /// Try to check that the selected screen is transitioning.
-        [<FunctionBinding>]
         static member tryGetSelectedScreenTransitioning world =
             Option.map not (World.tryGetSelectedScreenIdling world)
 
         /// Check that the selected screen is idling; that is, neither transitioning in or
         /// out via another screen (failing with an exception if no screen is selected).
-        [<FunctionBinding>]
         static member getSelectedScreenIdling world =
             match World.tryGetSelectedScreenIdling world with
             | Some answer -> answer
@@ -162,7 +158,6 @@ module WorldModule2 =
 
         /// Check that the selected screen is transitioning (failing with an exception if no screen
         /// is selected).
-        [<FunctionBinding>]
         static member getSelectedScreenTransitioning world =
             not (World.getSelectedScreenIdling world)
 
@@ -348,7 +343,6 @@ module WorldModule2 =
                 | DesireIgnore -> world
 
         /// Try to transition to the given screen if no other transition is in progress.
-        [<FunctionBinding>]
         static member tryTransitionScreen destination world =
             match World.getSelectedScreenOpt world with
             | Some selectedScreen ->
@@ -364,12 +358,10 @@ module WorldModule2 =
                 (true, world)
 
         /// Transition to the given screen.
-        [<FunctionBinding>]
         static member transitionScreen destination world =
             World.tryTransitionScreen destination world |> snd
 
         /// Set the slide aspects of a screen.
-        [<FunctionBinding>]
         static member setScreenSlide (slideDescriptor : SlideDescriptor) destination (screen : Screen) world =
 
             // destroy existing slide group if any
@@ -407,26 +399,22 @@ module WorldModule2 =
             world
 
         /// Create a dissolve screen whose content is loaded from the given group file.
-        [<FunctionBinding>]
         static member createDissolveScreenFromGroupFile6 dispatcherName nameOpt dissolveDescriptor songOpt groupFilePath world =
             let (dissolveScreen, world) = World.createDissolveScreen5 dispatcherName nameOpt dissolveDescriptor songOpt world
             let world = World.readGroupFromFile groupFilePath None dissolveScreen world |> snd
             (dissolveScreen, world)
 
         /// Create a dissolve screen whose content is loaded from the given group file.
-        [<FunctionBinding>]
         static member createDissolveScreenFromGroupFile<'d when 'd :> ScreenDispatcher> nameOpt dissolveDescriptor songOpt groupFilePath world =
             World.createDissolveScreenFromGroupFile6 typeof<'d>.Name nameOpt dissolveDescriptor groupFilePath songOpt world
 
         /// Create a slide screen that transitions to the given destination upon completion.
-        [<FunctionBinding>]
         static member createSlideScreen6 dispatcherName nameOpt slideDescriptor destination world =
             let (slideScreen, world) = World.createDissolveScreen5 dispatcherName nameOpt slideDescriptor.DissolveDescriptor None world
             let world = World.setScreenSlide slideDescriptor destination slideScreen world
             (slideScreen, world)
 
         /// Create a slide screen that transitions to the given destination upon completion.
-        [<FunctionBinding>]
         static member createSlideScreen<'d when 'd :> ScreenDispatcher> nameOpt slideDescriptor destination world =
             World.createSlideScreen6 typeof<'d>.Name nameOpt slideDescriptor destination world
 
@@ -474,7 +462,6 @@ module WorldModule2 =
             with exn -> (Left (scstring exn), World.choose world)
 
         /// Send a message to the subsystems to reload their existing assets.
-        [<FunctionBinding>]
         static member reloadExistingAssets world =
             let world = World.reloadRenderAssets2d world
             let world = World.reloadRenderAssets3d world
@@ -512,7 +499,6 @@ module WorldModule2 =
         /// Reload asset graph, build assets, then reload built assets.
         /// Currently does not support reloading of song assets, and possibly others that are
         /// locked by the engine's subsystems.
-        [<FunctionBinding>]
         static member tryReloadAssets world =
             let targetDir = AppDomain.CurrentDomain.BaseDirectory
             let assetSourceDir = Path.GetFullPath (targetDir + "../../..")
@@ -732,19 +718,35 @@ module WorldModule2 =
                     | :? Entity as entity ->
                         if entity.Exists world && entity.Selected world then
                             let center = bodyTransformMessage.Center
-                            let rotation = bodyTransformMessage.Rotation
-                            let linearVelocity = bodyTransformMessage.LinearVelocity
-                            let angularVelocity = bodyTransformMessage.AngularVelocity
-                            if entity.GetModelDriven world || bodyId.BodyIndex <> Constants.Physics.InternalIndex then
-                                let transformData =
-                                    { BodyCenter = center
-                                      BodyRotation = rotation
-                                      BodyLinearVelocity = linearVelocity
-                                      BodyAngularVelocity = angularVelocity }
-                                let transformAddress = entity.BodyTransformEvent
-                                let eventTrace = EventTrace.debug "World" "processIntegrationMessage" "" EventTrace.empty
-                                World.publishPlus transformData transformAddress eventTrace Nu.Game.Handle false false world
-                            else entity.ApplyPhysics center rotation linearVelocity angularVelocity world
+                            if not (Single.IsNaN center.X) then
+                                let rotation = bodyTransformMessage.Rotation
+                                let linearVelocity = bodyTransformMessage.LinearVelocity
+                                let angularVelocity = bodyTransformMessage.AngularVelocity
+                                if entity.GetModelDriven world || bodyId.BodyIndex <> Constants.Physics.InternalIndex then
+                                    let transformData =
+                                        { BodyCenter = center
+                                          BodyRotation = rotation
+                                          BodyLinearVelocity = linearVelocity
+                                          BodyAngularVelocity = angularVelocity }
+                                    let transformAddress = entity.BodyTransformEvent
+                                    let eventTrace = EventTrace.debug "World" "processIntegrationMessage" "" EventTrace.empty
+                                    World.publishPlus transformData transformAddress eventTrace Nu.Game.Handle false false world
+                                else entity.ApplyPhysics center rotation linearVelocity angularVelocity world
+                            else
+                                let mutable destroying = false
+                                World.inspectMessages (fun message ->
+                                    match message with
+                                    | DestroyBodyMessage dbm -> if dbm.BodyId = bodyId then destroying <- true
+                                    | DestroyBodiesMessage dbm -> if List.contains bodyId dbm.BodyIds then destroying <- true
+                                    | CreateBodyMessage cbm -> if cbm.BodyId = bodyId then destroying <- false
+                                    | CreateBodiesMessage cbm -> if cbm.BodySource = entity then destroying <- false
+                                    | ClearPhysicsMessageInternal -> destroying <- true
+                                    | _ -> ())
+                                    false world
+                                if not destroying then
+                                    Log.info ("Entity physics out of range. Re-propagating physics for '" + scstring entity + "'.")
+                                    World.propagateEntityPhysics entity world
+                                else world
                         else world
                     | _ -> world
             | Dead -> world
@@ -1401,7 +1403,7 @@ module EntityDispatcherModule2 =
                              "This may come about due to sending an incorrect signal type to the entity or due to too significant a change in the signal type when reloading code.")
                         world
 
-        override this.TryGetInitialModelValue<'a> world =
+        override this.TryGetInitialModel<'a> world =
             makeInitial world :> obj :?> 'a |> Some
 
         override this.TrySynchronize (initializing, entity, world) =
@@ -1412,6 +1414,18 @@ module EntityDispatcherModule2 =
             let content = Content.composite entity.Name initializers entities
             let world = Content.synchronizeEntity initializing contentOld content entity entity world
             World.setEntityContent content entity world
+
+        override this.TryTruncateModel<'a> (model : 'a) =
+            match model :> obj with
+            | :? 'model as model -> Some (this.TruncateModel model :> obj :?> 'a)
+            | _ -> None
+
+        override this.TryUntruncateModel<'a> (incoming : 'a, entity, world) =
+            match incoming :> obj with
+            | :? 'model as incoming ->
+                let current = entity.GetModelGeneric<'model> world
+                Some (this.UntruncateModel (current, incoming) :> obj :?> 'a)
+            | _ -> None
 
         /// Initialize the game's own properties.
         abstract Initialize : 'model * Entity -> InitializerContent list
@@ -1440,6 +1454,14 @@ module EntityDispatcherModule2 =
         /// Describes how the entity is to be viewed using the View API.
         abstract View : 'model * Entity * World -> View
         default this.View (_, _, _) = View.empty
+
+        /// Truncate the given model.
+        abstract TruncateModel : 'model -> 'model
+        default this.TruncateModel model = model
+
+        /// Untruncate the given model.
+        abstract UntruncateModel : 'model * 'model -> 'model
+        default this.UntruncateModel (_, incoming) = incoming
 
     /// A 2d entity dispatcher.
     and [<AbstractClass>] EntityDispatcher2d<'model, 'message, 'command when 'message :> Message and 'command :> Command> (centered, physical, makeInitial : World -> 'model) =
@@ -1662,7 +1684,7 @@ module GroupDispatcherModule =
                              "This may come about due to sending an incorrect signal type to the group or due to too significant a change in the signal type when reloading code.")
                         world
 
-        override this.TryGetInitialModelValue<'a> world =
+        override this.TryGetInitialModel<'a> world =
             makeInitial world :> obj :?> 'a |> Some
 
         override this.TrySynchronize (initializing, group, world) =
@@ -1673,6 +1695,18 @@ module GroupDispatcherModule =
             let content = Content.group group.Name initializers entities
             let world = Content.synchronizeGroup initializing contentOld content group group world
             World.setGroupContent content group world
+
+        override this.TryTruncateModel<'a> (model : 'a) =
+            match model :> obj with
+            | :? 'model as model -> Some (this.TruncateModel model :> obj :?> 'a)
+            | _ -> None
+
+        override this.TryUntruncateModel<'a> (incoming : 'a, group, world) =
+            match incoming :> obj with
+            | :? 'model as incoming ->
+                let current = group.GetModelGeneric<'model> world
+                Some (this.UntruncateModel (current, incoming) :> obj :?> 'a)
+            | _ -> None
 
         /// Initialize the group's own properties.
         abstract Initialize : 'model * Group -> InitializerContent list
@@ -1697,6 +1731,14 @@ module GroupDispatcherModule =
         /// Implements additional editing behavior for a group via the ImGui API.
         abstract Edit : 'model * EditOperation * Group * World -> Signal list * 'model
         default this.Edit (model, _, _, _) = just model
+
+        /// Truncate the given model.
+        abstract TruncateModel : 'model -> 'model
+        default this.TruncateModel model = model
+
+        /// Untruncate the given model.
+        abstract UntruncateModel : 'model * 'model -> 'model
+        default this.UntruncateModel (_, incoming) = incoming
 
 [<RequireQualifiedAccess>]
 module GroupPropertyDescriptor =
@@ -1812,7 +1854,7 @@ module ScreenDispatcherModule =
                              "This may come about due to sending an incorrect signal type to the screen or due to too significant a change in the signal type when reloading code.")
                         world
 
-        override this.TryGetInitialModelValue<'a> world =
+        override this.TryGetInitialModel<'a> world =
             makeInitial world :> obj :?> 'a |> Some
 
         override this.TrySynchronize (initializing, screen, world) =
@@ -1823,6 +1865,18 @@ module ScreenDispatcherModule =
             let content = Content.screen screen.Name Vanilla initializers group
             let world = Content.synchronizeScreen initializing contentOld content screen screen world
             World.setScreenContent content screen world
+
+        override this.TryTruncateModel<'a> (model : 'a) =
+            match model :> obj with
+            | :? 'model as model -> Some (this.TruncateModel model :> obj :?> 'a)
+            | _ -> None
+
+        override this.TryUntruncateModel<'a> (incoming : 'a, screen, world) =
+            match incoming :> obj with
+            | :? 'model as incoming ->
+                let current = screen.GetModelGeneric<'model> world
+                Some (this.UntruncateModel (current, incoming) :> obj :?> 'a)
+            | _ -> None
 
         /// Initialize the screen's own properties.
         abstract Initialize : 'model * Screen -> InitializerContent list
@@ -1847,6 +1901,14 @@ module ScreenDispatcherModule =
         /// Implements additional editing behavior for a screen via the ImGui API.
         abstract Edit : 'model * EditOperation * Screen * World -> Signal list * 'model
         default this.Edit (model, _, _, _) = just model
+
+        /// Truncate the given model.
+        abstract TruncateModel : 'model -> 'model
+        default this.TruncateModel model = model
+
+        /// Untruncate the given model.
+        abstract UntruncateModel : 'model * 'model -> 'model
+        default this.UntruncateModel (_, incoming) = incoming
 
 [<RequireQualifiedAccess>]
 module ScreenPropertyDescriptor =
@@ -1969,11 +2031,23 @@ module GameDispatcherModule =
                              "This may come about due to sending an incorrect signal type to the game or due to too significant a change in the signal type when reloading code.")
                         world
 
-        override this.TryGetInitialModelValue<'a> world =
+        override this.TryGetInitialModel<'a> world =
             makeInitial world :> obj :?> 'a |> Some
 
         override this.TrySynchronize (initializing, game, world) =
             synchronize initializing game world this |> snd
+
+        override this.TryTruncateModel<'a> (model : 'a) =
+            match model :> obj with
+            | :? 'model as model -> Some (this.TruncateModel model :> obj :?> 'a)
+            | _ -> None
+
+        override this.TryUntruncateModel<'a> (incoming : 'a, game, world) =
+            match incoming :> obj with
+            | :? 'model as incoming ->
+                let current = game.GetModelGeneric<'model> world
+                Some (this.UntruncateModel (current, incoming) :> obj :?> 'a)
+            | _ -> None
 
         /// Initialize the game's own properties.
         abstract Initialize : 'model * Game -> InitializerContent list
@@ -1998,6 +2072,14 @@ module GameDispatcherModule =
         /// Implements additional editing behavior for a game via the ImGui API.
         abstract Edit : 'model * EditOperation * Game * World -> Signal list * 'model
         default this.Edit (model, _, _, _) = just model
+
+        /// Truncate the given model.
+        abstract TruncateModel : 'model -> 'model
+        default this.TruncateModel model = model
+
+        /// Untruncate the given model.
+        abstract UntruncateModel : 'model * 'model -> 'model
+        default this.UntruncateModel (_, incoming) = incoming
 
 [<RequireQualifiedAccess>]
 module GamePropertyDescriptor =

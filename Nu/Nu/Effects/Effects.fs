@@ -200,7 +200,7 @@ and Content =
     | StaticSprite of Image : Resource * Aspects : Aspect array * Content : Content
     | AnimatedSprite of Image : Resource * Vector2i * CelCount : int * CelRun : int * CelDelay : GameTime * Playback : Playback * Aspects : Aspect array * Content : Content
     | TextSprite of Font : Resource * Text : string * Aspects : Aspect array * Content : Content
-    | Billboard of Albedo : Resource * Metallic : Resource * Roughness : Resource * AmbientOcclusion : Resource * Emission : Resource * Normal : Resource * HeightMap : Resource * MinFilterOpt : OpenGL.TextureMinFilter option * MagFilterOpt : OpenGL.TextureMagFilter option * Aspects : Aspect array * Content : Content
+    | Billboard of Albedo : Resource * Roughness : Resource * Metallic : Resource * AmbientOcclusion : Resource * Emission : Resource * Normal : Resource * HeightMap : Resource * MinFilterOpt : OpenGL.TextureMinFilter option * MagFilterOpt : OpenGL.TextureMagFilter option * Aspects : Aspect array * Content : Content
     | StaticModel of Resource * Aspects : Aspect array * Content : Content
     | Light3d of LightType * Aspects : Aspect array * Content : Content
     | SoundEffect of Resource * Aspects : Aspect array * Content : Content
@@ -457,7 +457,7 @@ module EffectSystem =
         | Scale scale -> { slice with Scale = scale }
         | Offset offset -> { slice with Offset = offset }
         | Angles angles -> { slice with Angles = angles }
-        | Degrees degrees -> { slice with Angles = Math.degreesToRadians3d degrees }
+        | Degrees degrees -> { slice with Angles = Math.DegreesToRadians3d degrees }
         | Size size -> { slice with Size = size }
         | Elevation elevation -> { slice with Elevation = elevation }
         | Inset inset -> { slice with Inset = inset }
@@ -531,8 +531,8 @@ module EffectSystem =
                 let (keyFrameTime, keyFrame, keyFrame2) = selectKeyFrames effectSystem.EffectTime playback keyFrames
                 let progress = evalProgress keyFrameTime keyFrame.TweenLength effectSystem
                 let tweened = tween Vector3.Multiply keyFrame.TweenValue keyFrame2.TweenValue progress algorithm
-                let applied = applyTween Vector3.Multiply Vector3.Divide Vector3.Pow Vector3.Modulo (Math.radiansToDegrees3d slice.Angles) tweened applicator
-                { slice with Angles = Math.degreesToRadians3d applied }
+                let applied = applyTween Vector3.Multiply Vector3.Divide Vector3.Pow Vector3.Modulo (Math.RadiansToDegrees3d slice.Angles) tweened applicator
+                { slice with Angles = Math.DegreesToRadians3d applied }
             else slice
         | Elevations (applicator, algorithm, playback, keyFrames) ->
             if Array.notEmpty keyFrames then
@@ -703,12 +703,12 @@ module EffectSystem =
         // build implicitly mounted content
         evalContent content slice history effectSystem
 
-    and private evalBillboard albedo metallic roughness ambientOcclusion emission normal height minFilterOpt magFilterOpt aspects content (slice : Slice) history effectSystem =
+    and private evalBillboard albedo roughness metallic ambientOcclusion emission normal height minFilterOpt magFilterOpt aspects content (slice : Slice) history effectSystem =
 
         // pull image from resource
         let imageAlbedo = evalResource albedo effectSystem
-        let imageMetallic = evalResource metallic effectSystem
         let imageRoughness = evalResource roughness effectSystem
+        let imageMetallic = evalResource metallic effectSystem
         let imageAmbientOcclusion = evalResource ambientOcclusion effectSystem
         let imageEmission = evalResource emission effectSystem
         let imageNormal = evalResource normal effectSystem
@@ -721,8 +721,8 @@ module EffectSystem =
         let effectSystem =
             if slice.Enabled then
                 let imageAlbedo = AssetTag.specialize<Image> imageAlbedo
-                let imageMetallic = AssetTag.specialize<Image> imageMetallic
                 let imageRoughness = AssetTag.specialize<Image> imageRoughness
+                let imageMetallic = AssetTag.specialize<Image> imageMetallic
                 let imageAmbientOcclusion = AssetTag.specialize<Image> imageAmbientOcclusion
                 let imageEmission = AssetTag.specialize<Image> imageEmission
                 let imageNormal = AssetTag.specialize<Image> imageNormal
@@ -731,8 +731,8 @@ module EffectSystem =
                 let insetOpt = if slice.Inset.Equals box2Zero then None else Some slice.Inset
                 let properties =
                     { AlbedoOpt = ValueSome slice.Color
-                      MetallicOpt = ValueNone
                       RoughnessOpt = ValueNone
+                      MetallicOpt = ValueNone
                       AmbientOcclusionOpt = ValueNone
                       EmissionOpt = ValueSome slice.Emission.R
                       HeightOpt = ValueSome slice.Height
@@ -745,8 +745,8 @@ module EffectSystem =
                               InsetOpt = insetOpt
                               MaterialProperties = properties
                               AlbedoImage = imageAlbedo
-                              MetallicImage = imageMetallic
                               RoughnessImage = imageRoughness
+                              MetallicImage = imageMetallic
                               AmbientOcclusionImage = imageAmbientOcclusion
                               EmissionImage = imageEmission
                               NormalImage = imageNormal
@@ -776,8 +776,8 @@ module EffectSystem =
                 let insetOpt = if slice.Inset.Equals box2Zero then None else Some slice.Inset
                 let properties =
                     { AlbedoOpt = ValueSome slice.Color
-                      MetallicOpt = ValueNone
                       RoughnessOpt = ValueNone
+                      MetallicOpt = ValueNone
                       AmbientOcclusionOpt = ValueNone
                       EmissionOpt = ValueSome slice.Emission.R
                       HeightOpt = ValueSome slice.Height
@@ -934,8 +934,8 @@ module EffectSystem =
             evalAnimatedSprite resource celSize celCount celRun delay playback aspects content slice history effectSystem
         | TextSprite (resource, text, aspects, content) ->
             evalTextSprite resource text aspects content slice history effectSystem
-        | Billboard (resourceAlbedo, resourceMetallic, resourceRoughness, resourceAmbientOcclusion, resourceEmission, resourceNormal, resourceHeight, minFilterOpt, magFilterOpt, aspects, content) ->
-            evalBillboard resourceAlbedo resourceMetallic resourceRoughness resourceAmbientOcclusion resourceEmission resourceNormal resourceHeight minFilterOpt magFilterOpt aspects content slice history effectSystem
+        | Billboard (resourceAlbedo, resourceRoughness, resourceMetallic, resourceAmbientOcclusion, resourceEmission, resourceNormal, resourceHeight, minFilterOpt, magFilterOpt, aspects, content) ->
+            evalBillboard resourceAlbedo resourceRoughness resourceMetallic resourceAmbientOcclusion resourceEmission resourceNormal resourceHeight minFilterOpt magFilterOpt aspects content slice history effectSystem
         | StaticModel (resource, aspects, content) ->
             evalStaticModel resource aspects content slice history effectSystem
         | Light3d (lightType, aspects, content) ->

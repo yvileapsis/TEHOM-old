@@ -59,9 +59,12 @@ type [<ReferenceEquality>] AetherPhysicsEngine =
     static member private toPhysicsDensity substance =
         match substance with
         | Density density -> density
-        | Mass _ ->
-            Log.debugOnce "Currently 2D physics supports Substance only in terms of Density; using Density = 1.0f."
-            1.0f
+        | Mass mass ->
+            // TODO: figure out how to convert density to mass in all cases.
+            if mass <> 1.0f then
+                Log.infoOnce "Currently 2D physics supports Substance only in terms of Density; using Density = 1.0f."
+                1.0f
+            else mass
 
     static member private handleCollision
         (bodyShape : Dynamics.Fixture)
@@ -133,7 +136,7 @@ type [<ReferenceEquality>] AetherPhysicsEngine =
         body.SetIsSensor bodyProperties.Sensor
 
     static member private attachBoxBody bodySource (bodyProperties : BodyProperties) (bodyBox : BodyBox) (body : Body) =
-        let transform = Option.defaultValue m4Identity bodyBox.TransformOpt
+        let transform = Option.mapOrDefaultValue (fun (t : Affine) -> let mutable t = t in t.Matrix) m4Identity bodyBox.TransformOpt
         let shape =
             body.CreateRectangle
                 (AetherPhysicsEngine.toPhysicsPolygonDiameter (bodyBox.Size.X * transform.Scale.X),
@@ -146,7 +149,7 @@ type [<ReferenceEquality>] AetherPhysicsEngine =
         AetherPhysicsEngine.configureBodyShapeProperties bodyProperties bodyBox.PropertiesOpt shape
 
     static member private attachBodySphere bodySource (bodyProperties : BodyProperties) (bodySphere : BodySphere) (body : Body) =
-        let transform = Option.defaultValue m4Identity bodySphere.TransformOpt
+        let transform = Option.mapOrDefaultValue (fun (t : Affine) -> let mutable t = t in t.Matrix) m4Identity bodySphere.TransformOpt
         let shape =
             body.CreateCircle
                 (AetherPhysicsEngine.toPhysicsPolygonRadius (bodySphere.Radius * transform.Scale.X),
@@ -158,7 +161,7 @@ type [<ReferenceEquality>] AetherPhysicsEngine =
         AetherPhysicsEngine.configureBodyShapeProperties bodyProperties bodySphere.PropertiesOpt shape
 
     static member private attachBodyCapsule bodySource (bodyProperties : BodyProperties) (bodyCapsule : BodyCapsule) (body : Body) =
-        let transform = Option.defaultValue m4Identity bodyCapsule.TransformOpt
+        let transform = Option.mapOrDefaultValue (fun (t : Affine) -> let mutable t = t in t.Matrix) m4Identity bodyCapsule.TransformOpt
         let height = AetherPhysicsEngine.toPhysicsPolygonDiameter (bodyCapsule.Height * transform.Scale.Y)
         let endRadius = AetherPhysicsEngine.toPhysicsPolygonRadius (bodyCapsule.Radius * transform.Scale.Y)
         let density = AetherPhysicsEngine.toPhysicsDensity bodyProperties.Substance
@@ -179,7 +182,7 @@ type [<ReferenceEquality>] AetherPhysicsEngine =
         Array.ofSeq bodyShapes
 
     static member private attachBodyBoxRounded bodySource (bodyProperties : BodyProperties) (bodyBoxRounded : BodyBoxRounded) (body : Body) =
-        let transform = Option.defaultValue m4Identity bodyBoxRounded.TransformOpt
+        let transform = Option.mapOrDefaultValue (fun (a : Affine) -> let mutable t = a in t.Matrix) m4Identity bodyBoxRounded.TransformOpt
         let width = AetherPhysicsEngine.toPhysicsPolygonDiameter (bodyBoxRounded.Size.X * transform.Scale.X)
         let height = AetherPhysicsEngine.toPhysicsPolygonDiameter (bodyBoxRounded.Size.Y * transform.Scale.Y)
         let radius = AetherPhysicsEngine.toPhysicsPolygonRadius (bodyBoxRounded.Radius * transform.Scale.X)
@@ -209,7 +212,7 @@ type [<ReferenceEquality>] AetherPhysicsEngine =
         Array.ofSeq bodyShapes
 
     static member private attachBodyConvexHull bodySource bodyProperties (bodyConvexHull : BodyConvexHull) (body : Body) =
-        let transform = Option.defaultValue m4Identity bodyConvexHull.TransformOpt
+        let transform = Option.mapOrDefaultValue (fun (t : Affine) -> let mutable t = t in t.Matrix) m4Identity bodyConvexHull.TransformOpt
         let vertices = Array.zeroCreate bodyConvexHull.Vertices.Length
         for i in 0 .. dec bodyConvexHull.Vertices.Length do
             vertices.[i] <- AetherPhysicsEngine.toPhysicsV2 (Vector3.Transform (bodyConvexHull.Vertices.[i], transform))
@@ -239,6 +242,7 @@ type [<ReferenceEquality>] AetherPhysicsEngine =
         | BodyConvexHull bodyConvexHull -> AetherPhysicsEngine.attachBodyConvexHull bodySource bodyProperties bodyConvexHull body |> Array.singleton
         | BodyStaticModel _ -> [||]
         | BodyStaticModelSurface _ -> [||]
+        | BodyTerrain _ -> [||]
         | BodyShapes bodyShapes -> AetherPhysicsEngine.attachBodyShapes bodySource bodyProperties bodyShapes body
 
     static member private createBody (createBodyMessage : CreateBodyMessage) physicsEngine =
@@ -260,7 +264,7 @@ type [<ReferenceEquality>] AetherPhysicsEngine =
         with :? ArgumentOutOfRangeException -> ()
 
         // always listen for collisions if not internal body
-        if not (bodyId.BodyIndex = Constants.Physics.InternalIndex) then
+        if bodyId.BodyIndex <> Constants.Physics.InternalIndex then
             body.add_OnCollision physicsEngine.CollisionHandler
             body.add_OnSeparation physicsEngine.SeparationHandler
 
@@ -359,27 +363,37 @@ type [<ReferenceEquality>] AetherPhysicsEngine =
     static member private applyBodyLinearImpulse (applyBodyLinearImpulseMessage : ApplyBodyLinearImpulseMessage) physicsEngine =
         match physicsEngine.Bodies.TryGetValue applyBodyLinearImpulseMessage.BodyId with
         | (true, (_, body)) ->
-            body.ApplyLinearImpulse
-                (AetherPhysicsEngine.toPhysicsV2 applyBodyLinearImpulseMessage.LinearImpulse,
-                 AetherPhysicsEngine.toPhysicsV2 applyBodyLinearImpulseMessage.Offset)
+            if not (Single.IsNaN applyBodyLinearImpulseMessage.LinearImpulse.X) then
+                body.ApplyLinearImpulse
+                    (AetherPhysicsEngine.toPhysicsV2 applyBodyLinearImpulseMessage.LinearImpulse,
+                     AetherPhysicsEngine.toPhysicsV2 applyBodyLinearImpulseMessage.Offset)
+            else Log.info ("Applying invalid linear impulse '" + scstring applyBodyLinearImpulseMessage.LinearImpulse + "'; this may destabilize Aether.")
         | (false, _) -> ()
 
     static member private applyBodyAngularImpulse (applyBodyAngularImpulseMessage : ApplyBodyAngularImpulseMessage) physicsEngine =
         match physicsEngine.Bodies.TryGetValue applyBodyAngularImpulseMessage.BodyId with
-        | (true, (_, body)) -> body.ApplyAngularImpulse (applyBodyAngularImpulseMessage.AngularImpulse.X)
+        | (true, (_, body)) ->
+            if not (Single.IsNaN applyBodyAngularImpulseMessage.AngularImpulse.X) then
+                body.ApplyAngularImpulse (applyBodyAngularImpulseMessage.AngularImpulse.X)
+            else Log.info ("Applying invalid angular impulse '" + scstring applyBodyAngularImpulseMessage.AngularImpulse + "'; this may destabilize Aether.")
         | (false, _) -> ()
 
     static member private applyBodyForce (applyBodyForceMessage : ApplyBodyForceMessage) physicsEngine =
         match physicsEngine.Bodies.TryGetValue applyBodyForceMessage.BodyId with
         | (true, (_, body)) ->
-            body.ApplyForce
-                (AetherPhysicsEngine.toPhysicsV2 applyBodyForceMessage.Force,
-                 AetherPhysicsEngine.toPhysicsV2 applyBodyForceMessage.Offset)
+            if not (Single.IsNaN applyBodyForceMessage.Force.X) then
+                body.ApplyForce
+                    (AetherPhysicsEngine.toPhysicsV2 applyBodyForceMessage.Force,
+                     AetherPhysicsEngine.toPhysicsV2 applyBodyForceMessage.Offset)
+            else Log.info ("Applying invalid force '" + scstring applyBodyForceMessage.Force + "'; this may destabilize Aether.")
         | (false, _) -> ()
 
     static member private applyBodyTorque (applyBodyTorqueMessage : ApplyBodyTorqueMessage) physicsEngine =
         match physicsEngine.Bodies.TryGetValue applyBodyTorqueMessage.BodyId with
-        | (true, (_, body)) -> body.ApplyTorque (applyBodyTorqueMessage.Torque.X)
+        | (true, (_, body)) ->
+            if not (Single.IsNaN applyBodyTorqueMessage.Torque.X) then
+                body.ApplyTorque (applyBodyTorqueMessage.Torque.X)
+            else Log.info ("Applying invalid torque '" + scstring applyBodyTorqueMessage.Torque + "'; this may destabilize Aether.")
         | (false, _) -> ()
 
     static member private setBodyObservable (setBodyObservableMessage : SetBodyObservableMessage) physicsEngine =
@@ -405,10 +419,10 @@ type [<ReferenceEquality>] AetherPhysicsEngine =
         | SetBodyEnabledMessage setBodyEnabledMessage -> AetherPhysicsEngine.setBodyEnabled setBodyEnabledMessage physicsEngine
         | SetBodyCenterMessage setBodyCenterMessage -> AetherPhysicsEngine.setBodyCenter setBodyCenterMessage physicsEngine
         | SetBodyRotationMessage setBodyRotationMessage -> AetherPhysicsEngine.setBodyRotation setBodyRotationMessage physicsEngine
-        | SetBodyAngularVelocityMessage setBodyAngularVelocityMessage -> AetherPhysicsEngine.setBodyAngularVelocity setBodyAngularVelocityMessage physicsEngine
         | SetBodyLinearVelocityMessage setBodyLinearVelocityMessage -> AetherPhysicsEngine.setBodyLinearVelocity setBodyLinearVelocityMessage physicsEngine
-        | ApplyBodyAngularImpulseMessage applyBodyAngularImpulseMessage -> AetherPhysicsEngine.applyBodyAngularImpulse applyBodyAngularImpulseMessage physicsEngine
+        | SetBodyAngularVelocityMessage setBodyAngularVelocityMessage -> AetherPhysicsEngine.setBodyAngularVelocity setBodyAngularVelocityMessage physicsEngine
         | ApplyBodyLinearImpulseMessage applyBodyLinearImpulseMessage -> AetherPhysicsEngine.applyBodyLinearImpulse applyBodyLinearImpulseMessage physicsEngine
+        | ApplyBodyAngularImpulseMessage applyBodyAngularImpulseMessage -> AetherPhysicsEngine.applyBodyAngularImpulse applyBodyAngularImpulseMessage physicsEngine
         | ApplyBodyForceMessage applyBodyForceMessage -> AetherPhysicsEngine.applyBodyForce applyBodyForceMessage physicsEngine
         | ApplyBodyTorqueMessage applyBodyTorqueMessage -> AetherPhysicsEngine.applyBodyTorque applyBodyTorqueMessage physicsEngine
         | SetBodyObservableMessage setBodyObservableMessage -> AetherPhysicsEngine.setBodyObservable setBodyObservableMessage physicsEngine
@@ -481,6 +495,10 @@ type [<ReferenceEquality>] AetherPhysicsEngine =
             let (_, body) = physicsEngine.Bodies.[bodyId]
             AetherPhysicsEngine.toPixelV3 body.LinearVelocity
 
+        member physicsEngine.GetBodyAngularVelocity bodyId =
+            let (_, body) = physicsEngine.Bodies.[bodyId]
+            v3 body.AngularVelocity 0.0f 0.0f
+
         member physicsEngine.GetBodyToGroundContactNormals bodyId =
             List.filter
                 (fun normal ->
@@ -504,6 +522,10 @@ type [<ReferenceEquality>] AetherPhysicsEngine =
         member physicsEngine.IsBodyOnGround bodyId =
             let groundNormals = (physicsEngine :> PhysicsEngine).GetBodyToGroundContactNormals bodyId
             List.notEmpty groundNormals
+
+        member physicsEngine.InspectMessages inspect =
+            for message in physicsEngine.PhysicsMessages do
+                inspect message
 
         member physicsEngine.PopMessages () =
             let messages = physicsEngine.PhysicsMessages
@@ -529,7 +551,7 @@ type [<ReferenceEquality>] AetherPhysicsEngine =
             let physicsStepAmount =
                 match (Constants.GameTime.DesiredFrameRate, stepTime) with
                 | (StaticFrameRate frameRate, UpdateTime frames) -> 1.0f / single frameRate * single frames
-                | (DynamicFrameRate _, ClockTime secs) -> secs
+                | (DynamicFrameRate _, ClockTime time) -> if time > 0.0f && time < 0.001f then 0.001f elif time > 0.1f then 0.1f else time
                 | (_, _) -> failwithumf ()
             AetherPhysicsEngine.applyGravity physicsStepAmount physicsEngine
             physicsEngine.PhysicsContext.Step physicsStepAmount

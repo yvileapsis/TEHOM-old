@@ -1086,7 +1086,7 @@ DockSpace             ID=0x8B93E3BD Window=0xA787BDB4 Pos=0,0 Size=1920,1080 Spl
                     let entityPosition = (entityDragOffset - mousePositionWorldOriginal) + (mousePositionWorld - mousePositionWorldOriginal)
                     let entityPositionSnapped =
                         if snaps2dSelected && ImGui.IsCtrlReleased ()
-                        then Math.snapF3d (Triple.fst (getSnaps ())) entityPosition.V3
+                        then Math.SnapF3d (Triple.fst (getSnaps ())) entityPosition.V3
                         else entityPosition.V3
                     let entityPosition = entity.GetPosition world
                     let entityPositionDelta = entityPositionSnapped - entityPosition
@@ -1108,7 +1108,7 @@ DockSpace             ID=0x8B93E3BD Window=0xA787BDB4 Pos=0,0 Size=1920,1080 Spl
                     let entityDegree = (entityDragOffset - mousePositionWorldOriginal.Y) + (mousePositionWorld.Y - mousePositionWorldOriginal.Y)
                     let entityDegreeSnapped =
                         if snaps2dSelected && ImGui.IsCtrlReleased ()
-                        then Math.snapF (Triple.snd (getSnaps ())) entityDegree
+                        then Math.SnapF (Triple.snd (getSnaps ())) entityDegree
                         else entityDegree
                     let entityDegree = (entity.GetDegreesLocal world).Z
                     if entity.MountExists world then
@@ -1172,10 +1172,10 @@ DockSpace             ID=0x8B93E3BD Window=0xA787BDB4 Pos=0,0 Size=1920,1080 Spl
                 world <- World.setEyeCenter3d (position + Vector3.Transform (v3Left, rotation) * moveSpeed) world
             if ImGui.IsKeyDown ImGuiKey.D && ImGui.IsCtrlReleased () then
                 world <- World.setEyeCenter3d (position + Vector3.Transform (v3Right, rotation) * moveSpeed) world
-            if ImGui.IsKeyDown ImGuiKey.E && ImGui.IsCtrlReleased () then
+            if ImGui.IsKeyDown ImGuiKey.Q && ImGui.IsCtrlReleased () then
                 let rotation' = rotation * Quaternion.CreateFromAxisAngle (v3Right, turnSpeed)
                 if Vector3.Dot (rotation'.Forward, v3Up) < 0.999f then world <- World.setEyeRotation3d rotation' world
-            if ImGui.IsKeyDown ImGuiKey.Q && ImGui.IsCtrlReleased () then
+            if ImGui.IsKeyDown ImGuiKey.E && ImGui.IsCtrlReleased () then
                 let rotation' = rotation * Quaternion.CreateFromAxisAngle (v3Left, turnSpeed)
                 if Vector3.Dot (rotation'.Forward, v3Down) < 0.999f then world <- World.setEyeRotation3d rotation' world
             if ImGui.IsKeyDown ImGuiKey.UpArrow && ImGui.IsAltReleased () then
@@ -1315,6 +1315,22 @@ DockSpace             ID=0x8B93E3BD Window=0xA787BDB4 Pos=0,0 Size=1920,1080 Spl
             | ValueNone -> ()
         if ImGui.IsItemFocused () then focusedPropertyDescriptorOpt <- Some (propertyDescriptor, simulant)
 
+        // edit roughness
+        let mutable isSome = ValueOption.isSome mp.RoughnessOpt
+        if ImGui.Checkbox ((if isSome then "##mpRoughnessIsSome" else "RoughnessOpt"), &isSome) then
+            if isSome
+            then setPropertyValue { mp with RoughnessOpt = ValueSome Constants.Render.RoughnessDefault } propertyDescriptor simulant
+            else setPropertyValue { mp with RoughnessOpt = ValueNone } propertyDescriptor simulant
+        else
+            match mp.RoughnessOpt with
+            | ValueSome roughness ->
+                let mutable roughness = roughness
+                ImGui.SameLine ()
+                if ImGui.SliderFloat ("RoughnessOpt", &roughness, 0.0f, 1.0f) then setPropertyValue { mp with RoughnessOpt = ValueSome roughness } propertyDescriptor simulant
+                if ImGui.IsItemFocused () then focusedPropertyDescriptorOpt <- Some (propertyDescriptor, simulant)
+            | ValueNone -> ()
+        if ImGui.IsItemFocused () then focusedPropertyDescriptorOpt <- Some (propertyDescriptor, simulant)
+
         // edit metallic
         let mutable isSome = ValueOption.isSome mp.MetallicOpt
         if ImGui.Checkbox ((if isSome then "##mpMetallicIsSome" else "MetallicOpt"), &isSome) then
@@ -1331,18 +1347,18 @@ DockSpace             ID=0x8B93E3BD Window=0xA787BDB4 Pos=0,0 Size=1920,1080 Spl
             | ValueNone -> ()
         if ImGui.IsItemFocused () then focusedPropertyDescriptorOpt <- Some (propertyDescriptor, simulant)
 
-        // edit roughness
-        let mutable isSome = ValueOption.isSome mp.RoughnessOpt
-        if ImGui.Checkbox ((if isSome then "##mpRoughnessIsSome" else "RoughnessOpt"), &isSome) then
+        // edit ambient occlusion
+        let mutable isSome = ValueOption.isSome mp.AmbientOcclusionOpt
+        if ImGui.Checkbox ((if isSome then "##mpAmbientOcclusionIsSome" else "AmbientOcclusionOpt"), &isSome) then
             if isSome
-            then setPropertyValue { mp with RoughnessOpt = ValueSome Constants.Render.RoughnessDefault } propertyDescriptor simulant
-            else setPropertyValue { mp with RoughnessOpt = ValueNone } propertyDescriptor simulant
+            then setPropertyValue { mp with AmbientOcclusionOpt = ValueSome Constants.Render.AmbientOcclusionDefault } propertyDescriptor simulant
+            else setPropertyValue { mp with AmbientOcclusionOpt = ValueNone } propertyDescriptor simulant
         else
-            match mp.RoughnessOpt with
-            | ValueSome roughness ->
-                let mutable roughness = roughness
+            match mp.AmbientOcclusionOpt with
+            | ValueSome ambientOcclusion ->
+                let mutable ambientOcclusion = ambientOcclusion
                 ImGui.SameLine ()
-                if ImGui.SliderFloat ("RoughnessOpt", &roughness, 0.0f, 1.0f) then setPropertyValue { mp with RoughnessOpt = ValueSome roughness } propertyDescriptor simulant
+                if ImGui.SliderFloat ("AmbientOcclusionOpt", &ambientOcclusion, 0.0f, 10.0f) then setPropertyValue { mp with AmbientOcclusionOpt = ValueSome ambientOcclusion } propertyDescriptor simulant
                 if ImGui.IsItemFocused () then focusedPropertyDescriptorOpt <- Some (propertyDescriptor, simulant)
             | ValueNone -> ()
         if ImGui.IsItemFocused () then focusedPropertyDescriptorOpt <- Some (propertyDescriptor, simulant)
@@ -1689,7 +1705,7 @@ DockSpace             ID=0x8B93E3BD Window=0xA787BDB4 Pos=0,0 Size=1920,1080 Spl
                                 else ImGui.Text "Name"
                             | _ -> ()
                             if ImGui.IsItemFocused () then focusedPropertyDescriptorOpt <- None
-                        elif not (simulant :? Entity) && propertyDescriptor.PropertyName = Constants.Engine.ModelPropertyName then
+                        elif propertyDescriptor.PropertyName = Constants.Engine.ModelPropertyName then
                             let mutable clickToEditModel = "*click to edit*"
                             ImGui.InputText ("Model", &clickToEditModel, 256u) |> ignore<bool>
                             if ImGui.IsItemFocused () then
@@ -1772,11 +1788,11 @@ DockSpace             ID=0x8B93E3BD Window=0xA787BDB4 Pos=0,0 Size=1920,1080 Spl
                                     if  not snaps2dSelected &&
                                         ImGui.IsCtrlReleased () then
                                         snaps3d else (0.0f, 0.0f, 0.0f)
-                                scale <- Math.snapF3d s scale
+                                scale <- Math.SnapF3d s scale
                                 if scale.X < 0.01f then scale.X <- 0.01f
                                 if scale.Y < 0.01f then scale.Y <- 0.01f
                                 if scale.Z < 0.01f then scale.Z <- 0.01f
-                                position <- Math.snapF3d p position
+                                position <- Math.SnapF3d p position
                                 match manipulationOperation with
                                 | OPERATION.SCALE -> world <- entity.SetScale scale world
                                 | OPERATION.ROTATE -> world <- entity.SetRotation rotation world
@@ -2141,7 +2157,13 @@ DockSpace             ID=0x8B93E3BD Window=0xA787BDB4 Pos=0,0 Size=1920,1080 Spl
                             toSymbolMemo.Evict Constants.Gaia.PropertyValueStrMemoEvictionAge
                             ofSymbolMemo.Evict Constants.Gaia.PropertyValueStrMemoEvictionAge
                             let converter = SymbolicConverter (false, None, propertyDescriptor.PropertyType, toSymbolMemo, ofSymbolMemo)
-                            let propertyValue = getPropertyValue propertyDescriptor simulant
+                            let propertyValueUntruncated = getPropertyValue propertyDescriptor simulant
+                            let propertyValue =
+                                if propertyDescriptor.PropertyName = Constants.Engine.ModelPropertyName then
+                                    match World.tryTruncateModel propertyValueUntruncated simulant world with
+                                    | Some truncatedValue -> truncatedValue
+                                    | None -> propertyValueUntruncated
+                                else propertyValueUntruncated
                             ImGui.Text propertyDescriptor.PropertyName
                             ImGui.SameLine ()
                             ImGui.Text ":"
@@ -2153,7 +2175,7 @@ DockSpace             ID=0x8B93E3BD Window=0xA787BDB4 Pos=0,0 Size=1920,1080 Spl
                             if  isPropertyAssetTag then
                                 ImGui.SameLine ()
                                 if ImGui.Button "Pick" then showAssetPickerDialog <- true
-                            if focusPropertyEditorRequested then
+                            if  focusPropertyEditorRequested then
                                 ImGui.SetKeyboardFocusHere ()
                                 focusPropertyEditorRequested <- false
                             if  propertyDescriptor.PropertyName = Constants.Engine.FacetNamesPropertyName &&
@@ -2163,7 +2185,13 @@ DockSpace             ID=0x8B93E3BD Window=0xA787BDB4 Pos=0,0 Size=1920,1080 Spl
                                 let worldsPast' = worldsPast
                                 try let propertyValueEscaped = propertyValueStr
                                     let propertyValueUnescaped = String.unescape propertyValueEscaped
-                                    let propertyValue = converter.ConvertFromString propertyValueUnescaped
+                                    let propertyValueTruncated = converter.ConvertFromString propertyValueUnescaped
+                                    let propertyValue =
+                                        if propertyDescriptor.PropertyName = Constants.Engine.ModelPropertyName then
+                                            match World.tryUntruncateModel propertyValueTruncated simulant world with
+                                            | Some truncatedValue -> truncatedValue
+                                            | None -> propertyValueTruncated
+                                        else propertyValueTruncated
                                     setPropertyValue propertyValue propertyDescriptor simulant
                                 with _ ->
                                     worldsPast <- worldsPast'

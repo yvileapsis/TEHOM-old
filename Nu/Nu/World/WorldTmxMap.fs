@@ -94,7 +94,7 @@ module TmxMap =
         TmxObject xml
 
     let rec importShape shape center (tileSize : Vector2) (tileOffset : Vector2) =
-        let transformOpt = Some (Matrix4x4.CreateTranslation (center * tileSize.V3 + tileOffset.V3))
+        let transformOpt = Some (Affine.makeTranslation (center * tileSize.V3 + tileOffset.V3))
         match shape with
         | BodyEmpty as empty ->
             empty
@@ -117,6 +117,8 @@ module TmxMap =
             staticModelSurface
         | BodyStaticModel _ as staticModel ->
             staticModel
+        | BodyTerrain _ as terrain ->
+            terrain
         | BodyShapes shapes ->
             BodyShapes (List.map (fun shape -> importShape shape center tileSize tileOffset) shapes)
 
@@ -303,7 +305,7 @@ module TmxMap =
               AngularVelocity = v3Zero
               AngularDamping = 0.0f
               AngularFactor = v3One
-              Substance = Density 1.0f
+              Substance = Mass 1.0f // TODO: check if this should be zero.
               GravityOverride = Some v3Zero
               CollisionDetection = Discontinuous
               CollisionCategories = Physics.categorizeCollisionMask collisionCategories

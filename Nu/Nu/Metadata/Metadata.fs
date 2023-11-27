@@ -14,18 +14,19 @@ Metadata from another thread. *)
 /// Metadata for an asset. Useful to describe various attributes of an asset without having the
 /// full asset loaded into memory.
 type Metadata =
+    | RawMetadata
     | TextureMetadata of Vector2i
     | TileMapMetadata of string * (TmxTileset * Image AssetTag) array * TmxMap
     | StaticModelMetadata of OpenGL.PhysicallyBased.PhysicallyBasedModel
     | AnimatedModelMetadata of OpenGL.PhysicallyBased.PhysicallyBasedModel
     | SoundMetadata
     | SongMetadata
-    | OtherMetadata of obj
 
 [<RequireQualifiedAccess>]
 module Metadata =
 
     (* Performance Timers *)
+    let private RawTimer = Stopwatch ()
     let private TextureTimer = Stopwatch ()
     let private TmxTimer = Stopwatch ()
     let private FbxTimer = Stopwatch ()
@@ -35,7 +36,12 @@ module Metadata =
     let private OggTimer = Stopwatch ()
 
     let mutable private MetadataPackages :
-        UMap<string, UMap<string, Metadata>> = UMap.makeEmpty StringComparer.Ordinal Imperative
+        UMap<string, UMap<string, string * Metadata>> = UMap.makeEmpty StringComparer.Ordinal Imperative
+
+    let private tryGenerateRawMetadata asset =
+        if File.Exists asset.FilePath
+        then Some RawMetadata
+        else None
 
     let private tryGenerateTextureMetadata asset =
         if File.Exists asset.FilePath then
@@ -93,6 +99,11 @@ module Metadata =
         let extension = Path.GetExtension(asset.FilePath).ToLowerInvariant()
         let metadataOpt =
             match extension with
+            | ".raw" ->
+                RawTimer.Start ()
+                let metadataOpt = tryGenerateRawMetadata asset
+                RawTimer.Stop ()
+                metadataOpt
             | ".bmp" | ".png" | ".jpg" | ".jpeg" | ".tga" | ".tif" | ".tiff" ->
                 TextureTimer.Start ()
                 let metadataOpt = tryGenerateTextureMetadata asset
@@ -130,7 +141,7 @@ module Metadata =
                 metadataOpt
             | _ -> None
         match metadataOpt with
-        | Some metadata -> Some (asset.AssetTag.AssetName, metadata)
+        | Some metadata -> Some (asset.AssetTag.AssetName, (asset.FilePath, metadata))
         | None -> None
 
     let private tryGenerateMetadataPackage config packageName assetGraph =
@@ -169,12 +180,21 @@ module Metadata =
                 MetadataPackages
                 packageNames
 
+    /// Attempt to get the file path of the given asset.
+    let tryGetFilePath (assetTag : obj AssetTag) =
+        match UMap.tryFind assetTag.PackageName MetadataPackages with
+        | Some package ->
+            match UMap.tryFind assetTag.AssetName package with
+            | Some (filePath, _) -> Some filePath
+            | None -> None
+        | None -> None
+
     /// Attempt to get the metadata of the given asset.
     let tryGetMetadata (assetTag : obj AssetTag) =
         match UMap.tryFind assetTag.PackageName MetadataPackages with
         | Some package ->
             match UMap.tryFind assetTag.AssetName package with
-            | Some _ as asset -> asset
+            | Some (_, asset) -> Some asset
             | None -> None
         | None -> None
 

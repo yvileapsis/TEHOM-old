@@ -3,8 +3,173 @@
 
 namespace Nu
 open System
+open System.Buffers.Binary
+open System.IO
 open System.Numerics
+open System.Runtime.InteropServices
 open Prime
+
+/// The endianness which indicates byte order in a raw asset.
+type [<StructuralEquality; NoComparison; Struct>] Endianness =
+    | LittleEndian
+    | BigEndian
+
+/// The format of a raw asset.
+type [<StructuralEquality; NoComparison>] RawFormat =
+    | RawUInt8
+    | RawUInt16 of Endianness
+    | RawUInt32 of Endianness
+    | RawSingle of Endianness
+
+/// A height map for 3d terrain constructed from a raw asset.
+type [<StructuralEquality; NoComparison; Struct>] RawHeightMap =
+    { Resolution : Vector2i
+      RawFormat : RawFormat
+      RawAsset : Raw AssetTag }
+
+type [<NoComparison; NoEquality>] HeightMapMetadata =
+    { Resolution : Vector2i
+      HeightsNormalized : single array
+      PositionsAndTexCoordses : struct (Vector3 * Vector2) array }
+
+/// A height map for terrain.
+[<Syntax
+    ("ImageHeightMap RawHeightMap", "", "", "", "",
+     Constants.PrettyPrinter.DefaultThresholdMin,
+     Constants.PrettyPrinter.DefaultThresholdMax)>]
+type [<StructuralEquality; NoComparison>] HeightMap =
+    | ImageHeightMap of Image AssetTag // only supports 8-bit depth on Red channel
+    | RawHeightMap of RawHeightMap
+
+    static member private tryGetImageData tryGetAssetFilePath (assetTag : Image AssetTag) =
+        match tryGetAssetFilePath (AssetTag.generalize assetTag) with
+        | Some filePath ->
+            match OpenGL.Texture.TryCreateImageData (Constants.OpenGl.UncompressedTextureFormat, false, filePath) with
+            | Some (metadata, imageDataPtr, disposer) ->
+                use _ = disposer
+                let bytes = Array.zeroCreate<byte> (metadata.TextureWidth * metadata.TextureHeight * sizeof<uint>)
+                Marshal.Copy (imageDataPtr, bytes, 0, bytes.Length)
+                Some (metadata, bytes)
+            | None -> None
+        | None -> None
+
+    static member private tryGetRawAssetData tryGetAssetFilePath (assetTag : Raw AssetTag) =
+        match tryGetAssetFilePath (AssetTag.generalize assetTag) with
+        | Some filePath ->
+            try let bytes = File.ReadAllBytes filePath
+                Some bytes
+            with exn ->
+                Log.debug ("Could not load texture '" + filePath + "' due to: " + scstring exn)
+                None
+        | None -> None
+
+    static member private tryGetImageHeightMapMetadata tryGetAssetFilePath (bounds : Box3) tiles image =
+        match HeightMap.tryGetImageData tryGetAssetFilePath image with
+        | Some (metadata, bytes) ->
+
+            // compute normalize heights
+            let resolutionX = metadata.TextureWidth
+            let resolutionY = metadata.TextureHeight
+            let scalar = 1.0f / single Byte.MaxValue
+            let heightsNormalized =
+                [|for y in 0 .. dec resolutionY do
+                    for x in 0 .. dec resolutionX do
+                        let index = (resolutionX * y + x) * 4 + 2 // extract r channel of pixel
+                        single bytes[index] * scalar|]
+
+            // compute positions and tex coordses
+            let quadSizeX = bounds.Size.X / single (dec resolutionX)
+            let quadSizeY = bounds.Size.Z / single (dec resolutionY)
+            let terrainHeight = bounds.Size.Y
+            let terrainPositionX = bounds.Min.X
+            let terrainPositionY = bounds.Min.Y
+            let terrainPositionZ = bounds.Min.Z
+            let texelWidth = 1.0f / single resolutionX
+            let texelHeight = 1.0f / single resolutionY
+            let positionsAndTexCoordses =
+                [|for y in 0 .. dec resolutionY do
+                    for x in 0 .. dec resolutionX do
+                        let normalized = heightsNormalized.[y * resolutionX + x]
+                        let position = v3 (single x * quadSizeX + terrainPositionX) (normalized * terrainHeight + terrainPositionY) (single y * quadSizeY + terrainPositionZ)
+                        let texCoords = v2 (single x * texelWidth) (single y * texelHeight) * tiles
+                        struct (position, texCoords)|]
+
+            // fin
+            Some { Resolution = v2i resolutionX resolutionY; HeightsNormalized = heightsNormalized; PositionsAndTexCoordses = positionsAndTexCoordses }
+        | None -> None
+
+    static member private tryGetRawHeightMapMetadata tryGetAssetFilePath (bounds : Box3) tiles map =
+
+        // ensure raw asset exists
+        match HeightMap.tryGetRawAssetData tryGetAssetFilePath map.RawAsset with
+        | Some rawAsset ->
+
+            try // read normalized heights
+                let resolutionX = map.Resolution.X
+                let resolutionY = map.Resolution.Y
+                let quadSizeX = bounds.Size.X / single (dec resolutionX)
+                let quadSizeY = bounds.Size.Z / single (dec resolutionY)
+                let terrainHeight = bounds.Size.Y
+                let terrainPositionX = bounds.Min.X
+                let terrainPositionY = bounds.Min.Y
+                let terrainPositionZ = bounds.Min.Z
+                let texelWidth = 1.0f / single resolutionX
+                let texelHeight = 1.0f / single resolutionY
+                use rawMemory = new MemoryStream (rawAsset)
+                use rawReader = new BinaryReader (rawMemory)
+                let heightsNormalized =
+                    [|match map.RawFormat with
+                      | RawUInt8 ->
+                        let scalar = 1.0f / single Byte.MaxValue
+                        for _ in 0 .. dec (resolutionY * resolutionX) do
+                            single (rawReader.ReadByte ()) * scalar
+                      | RawUInt16 endianness ->
+                        let scalar = 1.0f / single UInt16.MaxValue
+                        for _ in 0 .. dec (resolutionY * resolutionX) do
+                            let value =
+                                match endianness with
+                                | LittleEndian -> BinaryPrimitives.ReadUInt16LittleEndian (rawReader.ReadBytes 2)
+                                | BigEndian -> BinaryPrimitives.ReadUInt16BigEndian (rawReader.ReadBytes 2)
+                            single value * scalar
+                      | RawUInt32 endianness ->
+                        let scalar = 1.0f / single UInt32.MaxValue
+                        for _ in 0 .. dec (resolutionY * resolutionX) do
+                            let value =
+                                match endianness with
+                                | LittleEndian -> BinaryPrimitives.ReadUInt32LittleEndian (rawReader.ReadBytes 4)
+                                | BigEndian -> BinaryPrimitives.ReadUInt32BigEndian (rawReader.ReadBytes 4)
+                            single value * scalar
+                      | RawSingle endianness ->
+                        for _ in 0 .. dec (resolutionY * resolutionX) do
+                            let value =
+                                match endianness with
+                                | LittleEndian -> BinaryPrimitives.ReadSingleLittleEndian (rawReader.ReadBytes 4)
+                                | BigEndian -> BinaryPrimitives.ReadSingleBigEndian (rawReader.ReadBytes 4)
+                            value|]
+
+                // compute positions and tex coordses
+                let positionsAndTexCoordses =
+                    [|for y in 0 .. dec resolutionY do
+                        for x in 0 .. dec resolutionX do
+                            let normalized = heightsNormalized.[y * resolutionX + x]
+                            let position = v3 (single x * quadSizeX + terrainPositionX) (normalized * terrainHeight + terrainPositionY) (single y * quadSizeY + terrainPositionZ)
+                            let texCoords = v2 (single x * texelWidth) (single y * texelHeight) * tiles
+                            struct (position, texCoords)|]
+
+                // fin
+                Some { Resolution = v2i resolutionX resolutionY; HeightsNormalized = heightsNormalized; PositionsAndTexCoordses = positionsAndTexCoordses }
+            with exn -> Log.infoOnce ("Attempt to read raw height map failed with the following exception: " + exn.Message); None
+        | None -> None
+
+    /// Attempt to compute height map metadata, loading assets as required.
+    /// NOTE: if the heightmap pixel represents a quad in the terrain geometry in the exporting program, the geometry
+    /// produced here is slightly different, with the border slightly clipped, and the terrain and quad size, slightly
+    /// larger. i.e if the original map is 32m^2 and the original quad 1m^2 and the heightmap is 32x32, the quad axes
+    /// below will be > 1.0.
+    static member tryGetMetadata tryGetAssetFilePath bounds tiles heightMap =
+        match heightMap with
+        | ImageHeightMap image -> HeightMap.tryGetImageHeightMapMetadata tryGetAssetFilePath bounds tiles image
+        | RawHeightMap map -> HeightMap.tryGetRawHeightMapMetadata tryGetAssetFilePath bounds tiles map
 
 /// Identifies a body that can be found in a physics engine.
 type [<CustomEquality; NoComparison>] BodyId =
@@ -63,6 +228,11 @@ module BodyShapeProperties =
           CollisionMaskOpt = None
           SensorOpt = None }
 
+/// Internal object that carries interstitial information between Nu and a physics engine.
+type [<NoEquality; NoComparison>] BodyUserObject =
+    { BodyId : BodyId
+      Dispose : unit -> unit }
+
 /// Describes the substantial nature of a body in terms of mass or density.
 [<Syntax
     ("Mass Density", "", "", "", "",
@@ -86,48 +256,56 @@ type CollisionDetection =
 /// The shape of a physics body box.
 type BodyBox =
     { Size : Vector3
-      TransformOpt : Matrix4x4 option
+      TransformOpt : Affine option
       PropertiesOpt : BodyShapeProperties option }
     static member ofBox3 (box : Box3) =
-        { Size = box.Size; TransformOpt = Some (Matrix4x4.CreateTranslation box.Center); PropertiesOpt = None }
+        { Size = box.Size; TransformOpt = Some (Affine.makeTranslation box.Center); PropertiesOpt = None }
 
 /// The shape of a physics body sphere.
 type BodySphere =
     { Radius : single
-      TransformOpt : Matrix4x4 option
+      TransformOpt : Affine option
       PropertiesOpt : BodyShapeProperties option }
 
 /// The shape of a physics body capsule.
 type BodyCapsule =
     { Height : single
       Radius : single
-      TransformOpt : Matrix4x4 option
+      TransformOpt : Affine option
       PropertiesOpt : BodyShapeProperties option }
 
 /// The shape of a physics body capsule.
 type BodyBoxRounded =
     { Size : Vector3
       Radius : single
-      TransformOpt : Matrix4x4 option
+      TransformOpt : Affine option
       PropertiesOpt : BodyShapeProperties option }
 
 /// The shape of a physics body convex hull.
 type BodyConvexHull =
     { Vertices : Vector3 array
-      TransformOpt : Matrix4x4 option
+      TransformOpt : Affine option
       PropertiesOpt : BodyShapeProperties option }
 
 /// The shape of a physics body static model.
 type BodyStaticModel =
     { StaticModel : StaticModel AssetTag
-      TransformOpt : Matrix4x4 option
+      TransformOpt : Affine option
       PropertiesOpt : BodyShapeProperties option }
 
 /// The shape of a physics body static model surface.
 type BodyStaticModelSurface =
     { SurfaceIndex : int
       StaticModel : StaticModel AssetTag
-      TransformOpt : Matrix4x4 option
+      TransformOpt : Affine option
+      PropertiesOpt : BodyShapeProperties option }
+
+/// The shape of a physics body convex hull.
+type BodyTerrain =
+    { Resolution : Vector2i
+      Bounds : Box3
+      HeightMap : HeightMap
+      TransformOpt : Affine option
       PropertiesOpt : BodyShapeProperties option }
 
 /// The shape of a physics body.
@@ -144,6 +322,7 @@ type BodyShape =
     | BodyConvexHull of BodyConvexHull
     | BodyStaticModel of BodyStaticModel
     | BodyStaticModelSurface of BodyStaticModelSurface
+    | BodyTerrain of BodyTerrain
     | BodyShapes of BodyShape list
 
 /// The type of a physics body; Static, Kinematic, or Dynamic.
@@ -274,10 +453,7 @@ type JointProperties =
     { JointIndex : int
       JointDevice : JointDevice }
 
-[<RequireQualifiedAccess>]
-module JointProperties =
-
-    let empty =
+    static member empty =
         { JointIndex = 0
           JointDevice = JointEmpty }
 
@@ -337,16 +513,16 @@ type SetBodyLinearVelocityMessage =
     { BodyId : BodyId
       LinearVelocity : Vector3 }
 
+/// A message to the physics system to set the angular velocity of a body.
+type SetBodyAngularVelocityMessage =
+    { BodyId : BodyId
+      AngularVelocity : Vector3 }
+
 /// A message to the physics system to apply a linear impulse to a body.
 type ApplyBodyLinearImpulseMessage =
     { BodyId : BodyId
       LinearImpulse : Vector3
       Offset : Vector3 }
-
-/// A message to the physics system to set the angular velocity of a body.
-type SetBodyAngularVelocityMessage =
-    { BodyId : BodyId
-      AngularVelocity : Vector3 }
 
 /// A message to the physics system to apply an angular impulse to a body.
 type ApplyBodyAngularImpulseMessage =
@@ -407,10 +583,10 @@ type PhysicsMessage =
     | SetBodyEnabledMessage of SetBodyEnabledMessage
     | SetBodyCenterMessage of SetBodyCenterMessage
     | SetBodyRotationMessage of SetBodyRotationMessage
-    | SetBodyAngularVelocityMessage of SetBodyAngularVelocityMessage
     | SetBodyLinearVelocityMessage of SetBodyLinearVelocityMessage
-    | ApplyBodyAngularImpulseMessage of ApplyBodyAngularImpulseMessage
+    | SetBodyAngularVelocityMessage of SetBodyAngularVelocityMessage
     | ApplyBodyLinearImpulseMessage of ApplyBodyLinearImpulseMessage
+    | ApplyBodyAngularImpulseMessage of ApplyBodyAngularImpulseMessage
     | ApplyBodyForceMessage of ApplyBodyForceMessage
     | ApplyBodyTorqueMessage of ApplyBodyTorqueMessage
     | SetBodyObservableMessage of SetBodyObservableMessage
@@ -426,6 +602,8 @@ type PhysicsEngine =
     abstract GetBodyContactNormals : BodyId -> Vector3 list
     /// Get the linear velocity of the body with the given physics id.
     abstract GetBodyLinearVelocity : BodyId -> Vector3
+    /// Get the angular velocity of the body with the given physics id.
+    abstract GetBodyAngularVelocity : BodyId -> Vector3
     /// Get the contact normals where the body with the given physics id is touching the ground.
     abstract GetBodyToGroundContactNormals : BodyId -> Vector3 list
     /// Get a contact normal where the body with the given physics id is touching the ground (if one exists).
@@ -434,6 +612,8 @@ type PhysicsEngine =
     abstract GetBodyToGroundContactTangentOpt : BodyId -> Vector3 option
     /// Check that the body with the given physics id is on the ground.
     abstract IsBodyOnGround : BodyId -> bool
+    /// Inspect messages with the given lambda.
+    abstract InspectMessages : (PhysicsMessage -> unit) -> unit
     /// Pop all of the physics messages that have been enqueued.
     abstract PopMessages : unit -> PhysicsMessage UList * PhysicsEngine
     /// Clear all of the physics messages that have been enqueued.
@@ -453,10 +633,12 @@ type [<ReferenceEquality>] StubPhysicsEngine =
         member physicsEngine.GetBodyExists _ = false
         member physicsEngine.GetBodyContactNormals _ = failwith "No bodies in StubPhysicsEngine"
         member physicsEngine.GetBodyLinearVelocity _ = failwith "No bodies in StubPhysicsEngine"
+        member physicsEngine.GetBodyAngularVelocity _ = failwith "No bodies in StubPhysicsEngine"
         member physicsEngine.GetBodyToGroundContactNormals _ = failwith "No bodies in StubPhysicsEngine"
         member physicsEngine.GetBodyToGroundContactNormalOpt _ = failwith "No bodies in StubPhysicsEngine"
         member physicsEngine.GetBodyToGroundContactTangentOpt _ = failwith "No bodies in StubPhysicsEngine"
         member physicsEngine.IsBodyOnGround _ = failwith "No bodies in StubPhysicsEngine"
+        member physicsEngine.InspectMessages _ = ()
         member physicsEngine.PopMessages () = (UList.makeEmpty Functional, physicsEngine :> PhysicsEngine)
         member physicsEngine.ClearMessages () = physicsEngine :> PhysicsEngine
         member physicsEngine.EnqueueMessage _ = physicsEngine :> PhysicsEngine
@@ -480,12 +662,9 @@ module Physics =
 
     /// Localize a body shape to a specific size.
     let rec localizeBodyShape (size : Vector3) bodyShape =
-        let scaleTranslation (scalar : Vector3) (transformOpt : Matrix4x4 option) =
+        let scaleTranslation (scalar : Vector3) (transformOpt : Affine option) =
             match transformOpt with
-            | Some transform ->
-                let mutable transform = transform
-                transform.Translation <- transform.Translation * scalar
-                Some transform
+            | Some transform -> Some { transform with Translation = transform.Translation * scalar }
             | None -> None
         match bodyShape with
         | BodyEmpty -> BodyEmpty
@@ -496,4 +675,5 @@ module Physics =
         | BodyConvexHull bodyConvexHull -> BodyConvexHull { bodyConvexHull with Vertices = Array.map (fun vertex -> size * vertex) bodyConvexHull.Vertices; TransformOpt = scaleTranslation size bodyConvexHull.TransformOpt }
         | BodyStaticModel _ as bodyStaticModel -> bodyStaticModel
         | BodyStaticModelSurface _ as bodyStaticModelSurface -> bodyStaticModelSurface
+        | BodyTerrain _ as bodyTerrain -> bodyTerrain
         | BodyShapes bodyShapes -> BodyShapes (List.map (localizeBodyShape size) bodyShapes)

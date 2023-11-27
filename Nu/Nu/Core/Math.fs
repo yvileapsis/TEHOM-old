@@ -103,22 +103,55 @@ module Vector3 =
         member this.WithZ z = Vector3 (this.X, this.Y, z)
         member this.RollPitchYaw = Math.RollPitchYaw &this
 
+        /// Compute angle between vectors.
         member this.AngleBetween (that : Vector3) =
             let a = Vector3.Normalize this
             let b = Vector3.Normalize that
             acos (Vector3.Dot (a, b))
 
+        /// Compute power of vector components.
         static member Pow (a : Vector3, b : Vector3) =
             Vector3
                 (single (Math.Pow (double a.X, double b.X)),
                  single (Math.Pow (double a.Y, double b.Y)),
                  single (Math.Pow (double a.Z, double b.Z)))
 
+        /// Compute modulo of vector components.
         static member Modulo (a : Vector3, b : Vector3) =
             Vector3
                 (a.X % b.X,
                  a.Y % b.Y,
                  a.Z % b.Z)
+
+        /// Project a vector onto a plane.
+        static member Project (v : Vector3, p : Plane3) =
+            let mutable dc = Unchecked.defaultof<_>
+            p.DotCoordinate (&v, &dc)
+            v - dc * p.Normal
+
+        /// Reflect a vector on a plane.
+        static member Reflect (v : Vector3, p : Plane3) =
+            let mutable dc = Unchecked.defaultof<_>
+            p.DotCoordinate (&v, &dc)
+            v - 2.0f * dc * p.Normal
+
+        /// Compute distance of a vector from the nearest point on a plane.
+        static member Distance (v : Vector3, p : Plane3) =
+            let mutable dc = Unchecked.defaultof<_>
+            p.DotCoordinate (&v, &dc)
+            let distance = dc + p.D
+            abs (distance / p.Normal.Magnitude)
+
+        /// Compute offset from a vector to the nearest point on a plane.
+        static member ToPlane (v : Vector3, p : Plane3) =
+            let mutable dc = Unchecked.defaultof<_>
+            p.DotCoordinate (&v, &dc)
+            let distance = dc + p.D
+            -distance * p.Normal
+
+        /// Compute offset to a vector from the nearest point on a plane.
+        static member FromPlane (v : Vector3, p : Plane3) =
+            -Vector3.ToPlane (v, p)
 
     let inline v3 x y z = Vector3 (x, y, z)
     let inline v3Eq (v : Vector3) (v2 : Vector3) = v.X = v2.X && v.Y = v2.Y && v.Z = v2.Z
@@ -855,6 +888,14 @@ module Matrix4x4 =
         trs.Translation <- translation
         trs
 
+    /// Create a rotation matrix from three orthogonal vectors.
+    let CreateRotation (right : Vector3, up : Vector3, forward : Vector3) =
+        Matrix4x4
+            (right.X, up.X, forward.X, 0.0f,
+             right.Y, up.Y, forward.Y, 0.0f,
+             right.Z, up.Z, forward.Z, 0.0f,
+             0.0f, 0.0f, 0.0f, 1.0f)
+
 [<AutoOpen>]
 module Color =
 
@@ -969,6 +1010,35 @@ module Ray3 =
     let inline rayEq (left : Ray3) (right : Ray3) = left.Equals right
     let inline rayNeq (left : Ray3) (right : Ray3) = not (left.Equals right)
 
+/// Composition of individual affine matrix components.
+type [<StructuralEquality; NoComparison; Struct>] Affine =
+    { mutable Translation : Vector3
+      mutable Rotation : Quaternion
+      mutable Scale : Vector3 }
+    member this.Matrix =
+        Matrix4x4.CreateFromTrs (this.Translation, this.Rotation, this.Scale)
+    static member make translation rotation scale =
+        { Translation = translation; Rotation = rotation; Scale = scale }
+    static member makeTranslation translation =
+        Affine.make translation quatIdentity v3One
+    static member makeRotation translation =
+        Affine.make v3Zero translation v3One
+    static member makeScale scale =
+        Affine.make v3Zero quatIdentity scale
+    static member Identity =
+        Affine.make v3Zero quatIdentity v3One
+
+/// The flipness of an image.
+[<Syntax
+    ("FlipNone FlipH FlipV FlipHV", "", "", "", "",
+     Constants.PrettyPrinter.DefaultThresholdMin,
+     Constants.PrettyPrinter.DefaultThresholdMax)>]
+type [<StructuralEquality; NoComparison; Struct>] Flip =
+    | FlipNone
+    | FlipH
+    | FlipV
+    | FlipHV
+
 /// Type of light.
 [<Syntax
     ("PointLight DirectionalLight SpotLight", "", "", "", "",
@@ -991,24 +1061,13 @@ type [<StructuralEquality; NoComparison; Struct>] RayCast2Output =
     static member inline defaultOutput =
         Unchecked.defaultof<RayCast2Output>
 
-/// The flipness of an image.
-[<Syntax
-    ("FlipNone FlipH FlipV FlipHV", "", "", "", "",
-     Constants.PrettyPrinter.DefaultThresholdMin,
-     Constants.PrettyPrinter.DefaultThresholdMax)>]
-type [<StructuralEquality; NoComparison; Struct>] Flip =
-    | FlipNone
-    | FlipH
-    | FlipV
-    | FlipHV
-
 [<RequireQualifiedAccess>]
 module Math =
 
     let mutable private Initialized = false
 
     /// Initializes the type converters found in Math.fs.
-    let init () =
+    let Init () =
         if not Initialized then
             assignTypeConverter<Vector2, Vector2Converter> ()
             assignTypeConverter<Vector3, Vector3Converter> ()
@@ -1024,29 +1083,29 @@ module Math =
             Initialized <- true
 
     /// Convert radians to degrees.
-    let radiansToDegrees (radians : single) =
+    let RadiansToDegrees (radians : single) =
         radians.ToDegrees ()
 
     /// Convert radians to degrees in 3d.
-    let radiansToDegrees3d (radians : Vector3) =
+    let RadiansToDegrees3d (radians : Vector3) =
         v3
-            (radiansToDegrees radians.X)
-            (radiansToDegrees radians.Y)
-            (radiansToDegrees radians.Z)
+            (RadiansToDegrees radians.X)
+            (RadiansToDegrees radians.Y)
+            (RadiansToDegrees radians.Z)
 
     /// Convert degrees to radians.
-    let degreesToRadians (degrees : single) =
+    let DegreesToRadians (degrees : single) =
         degrees.ToRadians ()
 
     /// Convert degrees to radians in 3d.
-    let degreesToRadians3d (degrees : Vector3) =
+    let DegreesToRadians3d (degrees : Vector3) =
         v3
-            (degreesToRadians degrees.X)
-            (degreesToRadians degrees.Y)
-            (degreesToRadians degrees.Z)
+            (DegreesToRadians degrees.X)
+            (DegreesToRadians degrees.Y)
+            (DegreesToRadians degrees.Z)
 
     /// Snap an int value to an offset.
-    let snapI offset (value : int) =
+    let SnapI offset (value : int) =
         if offset <> 0 then
             let (div, rem) = Math.DivRem (value, offset)
             let rem = if single rem < single offset * 0.5f then 0 else offset
@@ -1055,10 +1114,10 @@ module Math =
 
     /// Snap a single value to an offset.
     /// Has a minimum granularity of 0.01f.
-    let snapF (offset : single) (value : single) =
-        single (snapI (int (round (offset * 100.0f))) (int (round (value * 100.0f)))) / 100.0f
+    let SnapF (offset : single) (value : single) =
+        single (SnapI (int (round (offset * 100.0f))) (int (round (value * 100.0f)))) / 100.0f
 
     /// Snap a Vector3 value to an offset.
     /// Has a minimum granularity of 0.001f.
-    let snapF3d offset (v3 : Vector3) =
-        Vector3 (snapF offset v3.X, snapF offset v3.Y, snapF offset v3.Z)
+    let SnapF3d offset (v3 : Vector3) =
+        Vector3 (SnapF offset v3.X, SnapF offset v3.Y, SnapF offset v3.Z)

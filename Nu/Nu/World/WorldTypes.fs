@@ -337,8 +337,8 @@ and GameDispatcher () =
     default this.Signal (_, _, world) = world
 
     /// Attempt to get the initial model value if the dispatcher defines one.
-    abstract TryGetInitialModelValue<'a> : World -> 'a option
-    default this.TryGetInitialModelValue _ = None
+    abstract TryGetInitialModel<'a> : World -> 'a option
+    default this.TryGetInitialModel _ = None
 
     /// Attempt to synchronize the content of a game.
     abstract TrySynchronize : bool * Game * World -> World
@@ -347,6 +347,14 @@ and GameDispatcher () =
     /// Participate in defining additional editing behavior for an entity via the ImGui API.
     abstract Edit : EditOperation * Game * World -> World
     default this.Edit (_, _, world) = world
+
+    /// Attempt to truncate a game model.
+    abstract TryTruncateModel<'a> : 'a -> 'a option
+    default this.TryTruncateModel _ = None
+
+    /// Attempt to untruncate a game model.
+    abstract TryUntruncateModel<'a> : 'a * Game * World -> 'a option
+    default this.TryUntruncateModel (_, _, _) = None
 
 /// The default dispatcher for screens.
 and ScreenDispatcher () =
@@ -381,8 +389,8 @@ and ScreenDispatcher () =
     default this.Signal (_, _, world) = world
 
     /// Attempt to get the initial model value if the dispatcher defines one.
-    abstract TryGetInitialModelValue<'a> : World -> 'a option
-    default this.TryGetInitialModelValue _ = None
+    abstract TryGetInitialModel<'a> : World -> 'a option
+    default this.TryGetInitialModel _ = None
 
     /// Attempt to synchronize the content of a screen.
     abstract TrySynchronize : bool * Screen * World -> World
@@ -391,6 +399,14 @@ and ScreenDispatcher () =
     /// Participate in defining additional editing behavior for an entity via the ImGui API.
     abstract Edit : EditOperation * Screen * World -> World
     default this.Edit (_, _, world) = world
+
+    /// Attempt to truncate a screen model.
+    abstract TryTruncateModel<'a> : 'a -> 'a option
+    default this.TryTruncateModel _ = None
+
+    /// Attempt to untruncate a screen model.
+    abstract TryUntruncateModel<'a> : 'a * Screen* World  -> 'a option
+    default this.TryUntruncateModel (_, _, _) = None
 
 /// The default dispatcher for groups.
 and GroupDispatcher () =
@@ -425,8 +441,8 @@ and GroupDispatcher () =
     default this.Signal (_, _, world) = world
 
     /// Attempt to get the initial model value if the dispatcher defines one.
-    abstract TryGetInitialModelValue<'a> : World -> 'a option
-    default this.TryGetInitialModelValue _ = None
+    abstract TryGetInitialModel<'a> : World -> 'a option
+    default this.TryGetInitialModel _ = None
 
     /// Attempt to synchronize the content of a group.
     abstract TrySynchronize : bool * Group * World -> World
@@ -435,6 +451,14 @@ and GroupDispatcher () =
     /// Participate in defining additional editing behavior for an entity via the ImGui API.
     abstract Edit : EditOperation * Group * World -> World
     default this.Edit (_, _, world) = world
+
+    /// Attempt to truncate a group model.
+    abstract TryTruncateModel<'a> : 'a -> 'a option
+    default this.TryTruncateModel _ = None
+
+    /// Attempt to untruncate a group model.
+    abstract TryUntruncateModel<'a> : 'a * Group* World  -> 'a option
+    default this.TryUntruncateModel (_, _, _) = None
 
 /// The default dispatcher for entities.
 and EntityDispatcher (is2d, centered, physical) =
@@ -471,6 +495,7 @@ and EntityDispatcher (is2d, centered, physical) =
          Define? LightProbe false
          Define? Light false
          Define? AlwaysUpdate false
+         Define? AlwaysRender false
          Define? PublishPreUpdates false
          Define? PublishUpdates false
          Define? PublishPostUpdates false
@@ -514,8 +539,8 @@ and EntityDispatcher (is2d, centered, physical) =
     default this.Signal (_, _, world) = world
 
     /// Attempt to get the initial model value if the dispatcher defines one.
-    abstract TryGetInitialModelValue<'a> : World -> 'a option
-    default this.TryGetInitialModelValue _ = None
+    abstract TryGetInitialModel<'a> : World -> 'a option
+    default this.TryGetInitialModel _ = None
 
     /// Attempt to synchronize content of an entity.
     abstract TrySynchronize : bool * Entity * World -> World
@@ -539,6 +564,14 @@ and EntityDispatcher (is2d, centered, physical) =
     /// Participate in defining additional editing behavior for an entity via the ImGui API.
     abstract Edit : EditOperation * Entity * World -> World
     default this.Edit (_, _, world) = world
+
+    /// Attempt to truncate an entity model.
+    abstract TryTruncateModel<'a> : 'a -> 'a option
+    default this.TryTruncateModel _ = None
+
+    /// Attempt to untruncate an entity model.
+    abstract TryUntruncateModel<'a> : 'a * Entity* World  -> 'a option
+    default this.TryUntruncateModel (_, _, _) = None
 
     /// Whether the dispatcher participates directly in a physics system (not counting its facets).
     member this.Physical = physical
@@ -850,13 +883,13 @@ and [<ReferenceEquality; CLIMutable>] ScreenState =
       Name : string }
 
     /// Make a screen state value.
-    static member make time nameOpt (dispatcher : ScreenDispatcher) ecs =
+    static member make makeEcs time nameOpt (dispatcher : ScreenDispatcher) =
         let (id, name) = Gen.id64AndNameIf nameOpt
         { Dispatcher = dispatcher
           Xtension = Xtension.makeFunctional ()
           Model = { DesignerType = typeof<unit>; DesignerValue = () }
           Content = WorldTypes.EmptyScreenContent :?> ScreenContent
-          Ecs = ecs
+          Ecs = makeEcs name
           TransitionState = IdlingState time
           Incoming = Transition.make Incoming
           Outgoing = Transition.make Outgoing
@@ -999,7 +1032,7 @@ and [<ReferenceEquality; CLIMutable>] EntityState =
     member this.Offset with get () = this.Transform.Offset and set value = this.Transform.Offset <- value
     member this.Angles with get () = this.Transform.Angles and set value = this.Transform.Angles <- value
     member this.Degrees with get () = this.Transform.Degrees and set value = this.Transform.Degrees <- value
-    member this.DegreesLocal with get () = Math.radiansToDegrees3d this.AnglesLocal and set value = this.AnglesLocal <- Math.degreesToRadians3d value
+    member this.DegreesLocal with get () = Math.RadiansToDegrees3d this.AnglesLocal and set value = this.AnglesLocal <- Math.DegreesToRadians3d value
     member this.Size with get () = this.Transform.Size and set value = this.Transform.Size <- value
     member this.RotationMatrix with get () = this.Transform.RotationMatrix
     member this.Elevation with get () = this.Transform.Elevation and set value = this.Transform.Elevation <- value
@@ -1023,6 +1056,7 @@ and [<ReferenceEquality; CLIMutable>] EntityState =
     member this.VisibleLocal with get () = this.Transform.VisibleLocal and set value = this.Transform.VisibleLocal <- value
     member this.Pickable with get () = this.Transform.Pickable and internal set value = this.Transform.Pickable <- value
     member this.AlwaysUpdate with get () = this.Transform.AlwaysUpdate and set value = this.Transform.AlwaysUpdate <- value
+    member this.AlwaysRender with get () = this.Transform.AlwaysRender and set value = this.Transform.AlwaysRender <- value
     member this.PublishPreUpdates with get () = this.Transform.PublishPreUpdates and set value = this.Transform.PublishPreUpdates <- value
     member this.PublishUpdates with get () = this.Transform.PublishUpdates and set value = this.Transform.PublishUpdates <- value
     member this.PublishPostUpdates with get () = this.Transform.PublishPostUpdates and set value = this.Transform.PublishPostUpdates <- value
@@ -1656,9 +1690,9 @@ and [<AbstractClass>] NuPlugin () =
     abstract MakeKeyedValues : World -> ((Guid * obj) list) * World
     default this.MakeKeyedValues world = ([], world)
 
-    /// Make the Ecs for each screen.
-    abstract MakeEcs : unit -> Ecs.Ecs
-    default this.MakeEcs () = Ecs.Ecs ()
+    /// Make the Ecs for the given screen.
+    abstract MakeEcs : Screen -> Ecs.Ecs
+    default this.MakeEcs _ = Ecs.Ecs ()
 
     /// Attempt to make an emitter of the given name.
     abstract TryMakeEmitter : GameTime -> GameTime -> GameTime -> single -> int -> string -> Particles.Emitter option

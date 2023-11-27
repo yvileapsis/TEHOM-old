@@ -6,7 +6,7 @@ open System
 open System.IO
 open Prime
 
-[<AutoOpen; ModuleBinding>]
+[<AutoOpen>]
 module WorldGameModule =
 
     type Game with
@@ -195,15 +195,23 @@ module WorldGameModule =
             let dispatcher = game.GetDispatcher world
             dispatcher.Edit (operation, game, world)
 
+        /// Attempt to truncate a game model.
+        static member tryTruncateGameModel<'model> (model : 'model) (game : Game) world =
+            let dispatcher = game.GetDispatcher world
+            dispatcher.TryTruncateModel model
+
+        /// Attempt to untruncate a game model.
+        static member tryUntruncateGameModel<'model> (model : 'model) (game : Game) world =
+            let dispatcher = game.GetDispatcher world
+            dispatcher.TryUntruncateModel (model, game, world)
+
         /// Get all the entities in the world.
-        [<FunctionBinding "getEntitiesFlattened0">]
         static member getEntitiesFlattened1 world =
             World.getGroups1 world |>
             Seq.map (fun group -> World.getEntitiesFlattened group world) |>
             Seq.concat
 
         /// Get all the groups in the world.
-        [<FunctionBinding "getGroups0">]
         static member getGroups1 world =
             World.getScreens world |>
             Seq.map (fun screen -> World.getGroups screen world) |>
@@ -220,7 +228,6 @@ module WorldGameModule =
             { gameDescriptor with ScreenDescriptors = World.writeScreens screens world }
 
         /// Write a game to a file.
-        [<FunctionBinding>]
         static member writeGameToFile (filePath : string) game world =
             let filePathTmp = filePath + ".tmp"
             let prettyPrinter = (SyntaxAttribute.defaultValue typeof<GameDescriptor>).PrettyPrinter
@@ -256,7 +263,6 @@ module WorldGameModule =
             (game, world)
 
         /// Read a game from a file.
-        [<FunctionBinding>]
         static member readGameFromFile (filePath : string) world =
             let gameDescriptorStr = File.ReadAllText filePath
             let gameDescriptor = scvalue<GameDescriptor> gameDescriptorStr

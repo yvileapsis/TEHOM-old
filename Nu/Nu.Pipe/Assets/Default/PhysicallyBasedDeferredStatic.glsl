@@ -3,7 +3,7 @@
 
 const int TEX_COORDS_OFFSET_VERTS = 6;
 
-const vec2 TexCoordsOffsetFilters[TEX_COORDS_OFFSET_VERTS] =
+const vec2 TEX_COORDS_OFFSET_FILTERS[TEX_COORDS_OFFSET_VERTS] =
     vec2[TEX_COORDS_OFFSET_VERTS](
         vec2(1,1),
         vec2(0,1),
@@ -12,7 +12,7 @@ const vec2 TexCoordsOffsetFilters[TEX_COORDS_OFFSET_VERTS] =
         vec2(0,0),
         vec2(1,0));
 
-const vec2 TexCoordsOffsetFilters2[TEX_COORDS_OFFSET_VERTS] =
+const vec2 TEX_COORDS_OFFSET_FILTERS_2[TEX_COORDS_OFFSET_VERTS] =
     vec2[TEX_COORDS_OFFSET_VERTS](
         vec2(0,0),
         vec2(1,0),
@@ -46,8 +46,8 @@ void main()
 {
     positionOut = model * vec4(position, 1.0);
     int texCoordsOffsetIndex = gl_VertexID % TEX_COORDS_OFFSET_VERTS;
-    vec2 texCoordsOffsetFilter = TexCoordsOffsetFilters[texCoordsOffsetIndex];
-    vec2 texCoordsOffsetFilter2 = TexCoordsOffsetFilters2[texCoordsOffsetIndex];
+    vec2 texCoordsOffsetFilter = TEX_COORDS_OFFSET_FILTERS[texCoordsOffsetIndex];
+    vec2 texCoordsOffsetFilter2 = TEX_COORDS_OFFSET_FILTERS_2[texCoordsOffsetIndex];
     texCoordsOut = texCoords + texCoordsOffset.xy * texCoordsOffsetFilter + texCoordsOffset.zw * texCoordsOffsetFilter2;
     albedoOut = albedo;
     materialOut = material;
@@ -64,8 +64,8 @@ const float GAMMA = 2.2;
 
 uniform vec3 eyeCenter;
 uniform sampler2D albedoTexture;
-uniform sampler2D metallicTexture;
 uniform sampler2D roughnessTexture;
+uniform sampler2D metallicTexture;
 uniform sampler2D emissionTexture;
 uniform sampler2D ambientOcclusionTexture;
 uniform sampler2D normalTexture;
@@ -114,13 +114,12 @@ void main()
     albedo = pow(albedoSample.rgb, vec3(GAMMA)) * albedoOut.rgb;
 
     // compute material properties
-    float metallic = texture(metallicTexture, texCoords).r * materialOut.r;
     vec4 roughnessSample = texture(roughnessTexture, texCoords);
-    float roughness = roughnessSample.a == 1.0f ? roughnessSample.g : roughnessSample.a;
-    roughness = (invertRoughnessOut == 0 ? roughness : 1.0f - roughness) * materialOut.g;
+    float roughness = (invertRoughnessOut == 0 ? roughnessSample.r : 1.0f - roughnessSample.r) * materialOut.r;
+    float metallic = texture(metallicTexture, texCoords).g * materialOut.g;
     float ambientOcclusion = texture(ambientOcclusionTexture, texCoords).b * materialOut.b;
     float emission = texture(emissionTexture, texCoords).r * materialOut.a;
-    material = vec4(metallic, roughness, ambientOcclusion, emission);
+    material = vec4(roughness, metallic, ambientOcclusion, emission);
 
     // compute normal and height
     normalAndHeight.xyz = normalize(toWorld * (texture(normalTexture, texCoords).xyz * 2.0 - 1.0));

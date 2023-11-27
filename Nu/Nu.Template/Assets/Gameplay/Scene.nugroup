@@ -4,19 +4,18 @@
   [Persistent True]
   [Visible True]]
  [[SkyBoxDispatcher
-   [[Name SkyBox]]
+   [[AmbientBrightness 0.5] [Name SkyBox]]
    []]
   [LightDispatcher3d
-   [[Name Light3d]
-    [Position [0 3 -0.1]]]
+   [[Brightness 3]
+    [Cutoff 100000]
+    [LightType DirectionalLight]
+    [Name Light3d]
+    [Position [0 2.5 0]]
+    [Presence Omnipresent]
+    [Rotation [0.4733702 0.26802042 -0.15380688 0.8248813]]]
    []]
   [StaticModelDispatcher
-   [[Name StaticModelLeft]
-    [Position [-2 1.5 0]]
-    [Size [3.833142 5.769598 5.354998]]]
-   []]
-  [StaticModelDispatcher
-   [[Name StaticModelRight]
-    [Position [2 1.5 0]]
+   [[Name StaticModel]
     [Size [3.833142 5.769598 5.354998]]]
    []]]]

@@ -80,12 +80,12 @@ float geometrySchlick(vec3 n, vec3 v, vec3 l, float roughness)
 
 vec3 fresnelSchlick(float cosTheta, vec3 f0)
 {
-    return f0 + (1.0 - f0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), REFLECTION_LOD_MAX);
+    return f0 + (1.0 - f0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
 }
 
 vec3 fresnelSchlickRoughness(float cosTheta, vec3 f0, float roughness)
 {
-    return f0 + (max(vec3(1.0 - roughness), f0) - f0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), REFLECTION_LOD_MAX);
+    return f0 + (max(vec3(1.0 - roughness), f0) - f0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
 }
 
 void main()
@@ -105,8 +105,8 @@ void main()
     float ssao = texture(ssaoTexture, texCoordsOut).r;
 
     // compute materials
-    float metallic = material.r;
-    float roughness = material.g;
+    float roughness = material.r;
+    float metallic = material.g;
     float ambientOcclusion = material.b * ssao;
     vec3 emission = vec3(material.a);
 
@@ -174,14 +174,14 @@ void main()
     vec3 kS = f;
     vec3 kD = 1.0 - kS;
     kD *= 1.0 - metallic;
-    vec3 diffuse = irradiance * albedo * lightAmbientDiffuse;
+    vec3 diffuse = kD * irradiance * albedo * lightAmbientDiffuse;
 
     // compute specular term
     vec2 environmentBrdf = texture(brdfTexture, vec2(max(dot(normal, v), 0.0), roughness)).rg;
     vec3 specular = environmentFilter * (f * environmentBrdf.x + environmentBrdf.y) * lightAmbientSpecular;
 
     // compute ambient term
-    vec3 ambient = kD * diffuse + specular;
+    vec3 ambient = diffuse + specular;
 
     // compute color w/ tone mapping, gamma correction, and emission
     vec3 color = lightAccum + ambient;

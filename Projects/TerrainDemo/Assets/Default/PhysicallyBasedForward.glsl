@@ -3,7 +3,7 @@
 
 const int TEX_COORDS_OFFSET_VERTS = 6;
 
-const vec2 TexCoordsOffsetFilters[TEX_COORDS_OFFSET_VERTS] =
+const vec2 TEX_COORDS_OFFSET_FILTERS[TEX_COORDS_OFFSET_VERTS] =
     vec2[TEX_COORDS_OFFSET_VERTS](
         vec2(1,1),
         vec2(0,1),
@@ -12,7 +12,7 @@ const vec2 TexCoordsOffsetFilters[TEX_COORDS_OFFSET_VERTS] =
         vec2(0,0),
         vec2(1,0));
 
-const vec2 TexCoordsOffsetFilters2[TEX_COORDS_OFFSET_VERTS] =
+const vec2 TEX_COORDS_OFFSET_FILTERS_2[TEX_COORDS_OFFSET_VERTS] =
     vec2[TEX_COORDS_OFFSET_VERTS](
         vec2(0,0),
         vec2(1,0),
@@ -46,8 +46,8 @@ void main()
 {
     positionOut = model * vec4(position, 1.0);
     int texCoordsOffsetIndex = gl_VertexID % TEX_COORDS_OFFSET_VERTS;
-    vec2 texCoordsOffsetFilter = TexCoordsOffsetFilters[texCoordsOffsetIndex];
-    vec2 texCoordsOffsetFilter2 = TexCoordsOffsetFilters2[texCoordsOffsetIndex];
+    vec2 texCoordsOffsetFilter = TEX_COORDS_OFFSET_FILTERS[texCoordsOffsetIndex];
+    vec2 texCoordsOffsetFilter2 = TEX_COORDS_OFFSET_FILTERS_2[texCoordsOffsetIndex];
     texCoordsOut = texCoords + texCoordsOffset.xy * texCoordsOffsetFilter + texCoordsOffset.zw * texCoordsOffsetFilter2;
     albedoOut = albedo;
     materialOut = material;
@@ -74,8 +74,8 @@ uniform vec3 eyeCenter;
 uniform vec3 lightAmbientColor;
 uniform float lightAmbientBrightness;
 uniform sampler2D albedoTexture;
-uniform sampler2D metallicTexture;
 uniform sampler2D roughnessTexture;
+uniform sampler2D metallicTexture;
 uniform sampler2D emissionTexture;
 uniform sampler2D ambientOcclusionTexture;
 uniform sampler2D normalTexture;
@@ -162,12 +162,12 @@ float geometrySchlick(vec3 normal, vec3 v, vec3 l, float roughness)
 
 vec3 fresnelSchlick(float cosTheta, vec3 f0)
 {
-    return f0 + (1.0 - f0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), REFLECTION_LOD_MAX);
+    return f0 + (1.0 - f0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
 }
 
 vec3 fresnelSchlickRoughness(float cosTheta, vec3 f0, float roughness)
 {
-    return f0 + (max(vec3(1.0 - roughness), f0) - f0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), REFLECTION_LOD_MAX);
+    return f0 + (max(vec3(1.0 - roughness), f0) - f0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
 }
 
 void main()
@@ -204,11 +204,10 @@ void main()
     albedo.a = mix(albedo.a, 1.0, clamp((distance - OPAQUING_DISTANCE_BEGIN) / OPAQUING_DISTANCE_RANGE, 0.0, 1.0));
 
     // compute material properties
-    float metallic = texture(metallicTexture, texCoords).r * materialOut.r;
-    float ambientOcclusion = texture(ambientOcclusionTexture, texCoords).b * materialOut.b;
     vec4 roughnessSample = texture(roughnessTexture, texCoords);
-    float roughness = roughnessSample.a == 1.0f ? roughnessSample.g : roughnessSample.a;
-    roughness = (invertRoughnessOut == 0 ? roughness : 1.0f - roughness) * materialOut.g;
+    float roughness = (invertRoughnessOut == 0 ? roughnessSample.r : 1.0f - roughnessSample.r) * materialOut.r;
+    float metallic = texture(metallicTexture, texCoords).g * materialOut.g;
+    float ambientOcclusion = texture(ambientOcclusionTexture, texCoords).b * materialOut.b;
     vec3 emission = vec3(texture(emissionTexture, texCoords).r * materialOut.a);
 
     // compute lightAccum term
@@ -282,13 +281,13 @@ void main()
     {
         irradiance = texture(irradianceMap, n).rgb;
         vec3 r = reflect(-v, n);
-        environmentFilter = textureLod(environmentFilterMap, r, roughness * (REFLECTION_LOD_MAX - 1.0)).rgb;
+        environmentFilter = textureLod(environmentFilterMap, r, roughness * REFLECTION_LOD_MAX).rgb;
     }
     else if (lm2 == -1)
     {
         irradiance = texture(irradianceMaps[lm1], n).rgb;
         vec3 r = parallaxCorrection(environmentFilterMaps[lm1], lightMapOrigins[lm1], lightMapMins[lm1], lightMapSizes[lm1], position, n);
-        environmentFilter = textureLod(environmentFilterMaps[lm1], r, roughness * (REFLECTION_LOD_MAX - 1.0)).rgb;
+        environmentFilter = textureLod(environmentFilterMaps[lm1], r, roughness * REFLECTION_LOD_MAX).rgb;
     }
     else
     {
@@ -308,8 +307,8 @@ void main()
         // compute blended environment filter
         vec3 r1 = parallaxCorrection(environmentFilterMaps[lm1], lightMapOrigins[lm1], lightMapMins[lm1], lightMapSizes[lm1], position, n);
         vec3 r2 = parallaxCorrection(environmentFilterMaps[lm2], lightMapOrigins[lm2], lightMapMins[lm2], lightMapSizes[lm2], position, n);
-        vec3 environmentFilter1 = textureLod(environmentFilterMaps[lm1], r1, roughness * (REFLECTION_LOD_MAX - 1.0)).rgb;
-        vec3 environmentFilter2 = textureLod(environmentFilterMaps[lm2], r2, roughness * (REFLECTION_LOD_MAX - 1.0)).rgb;
+        vec3 environmentFilter1 = textureLod(environmentFilterMaps[lm1], r1, roughness * REFLECTION_LOD_MAX).rgb;
+        vec3 environmentFilter2 = textureLod(environmentFilterMaps[lm2], r2, roughness * REFLECTION_LOD_MAX).rgb;
         environmentFilter = environmentFilter1 * scalar1 + environmentFilter2 * scalar2;
     }
 
@@ -322,15 +321,14 @@ void main()
     vec3 kS = f;
     vec3 kD = 1.0 - kS;
     kD *= 1.0 - metallic;
-    vec3 diffuse = irradiance * albedo.rgb * lightAmbientDiffuse;
-    float alpha = albedo.a;
+    vec3 diffuse = kD * irradiance * albedo.rgb * lightAmbientDiffuse;
 
     // compute specular term
     vec2 environmentBrdf = texture(brdfTexture, vec2(max(dot(n, v), 0.0), roughness)).rg;
     vec3 specular = environmentFilter * (f * environmentBrdf.x + environmentBrdf.y) * lightAmbientSpecular;
 
     // compute ambient term
-    vec3 ambient = (kD * diffuse + specular) * ambientOcclusion;
+    vec3 ambient = diffuse + specular;
 
     // compute color w/ tone mapping, gamma correction, and emission
     vec3 color = lightAccum + ambient;
@@ -339,5 +337,5 @@ void main()
     color = color + emission * albedo.rgb;
 
     // write
-    frag = vec4(color, alpha);
+    frag = vec4(color, albedo.a);
 }

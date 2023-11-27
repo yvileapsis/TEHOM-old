@@ -30,10 +30,13 @@ module Nu =
             Reflection.init ()
 
             // init math module
-            Math.init ()
+            Math.Init ()
+
+            // init vsync
+            Vsync.Init nuConfig.RunSynchronously
 
             // init OpenGL assert mechanism
-            OpenGL.Hl.AssertInit
+            OpenGL.Hl.Init
 #if DEBUG
                 nuConfig.Unaccompanied
 #else
@@ -203,7 +206,7 @@ module Nu =
                         (fun quadtree ->
                             for entity in entities2d do
                                 let entityState = World.getEntityState entity world
-                                let element = Quadelement.make entityState.Visible entity
+                                let element = Quadelement.make (entityState.Visible || entityState.AlwaysRender) entity
                                 Quadtree.addElement entityState.Presence entityState.Bounds.Box2 element quadtree
                             quadtree)
                         (World.getQuadtree world)
@@ -214,7 +217,7 @@ module Nu =
                         (fun octree ->
                             for entity in entities3d do
                                 let entityState = World.getEntityState entity world
-                                let element = Octelement.make entityState.Visible entityState.Static entityState.LightProbe entityState.Light entityState.Presence entityState.Bounds entity
+                                let element = Octelement.make (entityState.Visible || entityState.AlwaysRender) entityState.Static entityState.LightProbe entityState.Light entityState.Presence entityState.Bounds entity
                                 Octree.addElement entityState.Presence entityState.Bounds element octree
                             octree)
                         (World.getOctree world)
@@ -232,7 +235,7 @@ module Nu =
                         (fun quadtree ->
                             for entity in entities2d do
                                 let entityState = World.getEntityState entity world
-                                let element = Quadelement.make entityState.Visible entity
+                                let element = Quadelement.make (entityState.Visible || entityState.AlwaysRender) entity
                                 Quadtree.removeElement entityState.Presence entityState.Bounds.Box2 element quadtree
                             quadtree)
                         (World.getQuadtree world)
@@ -243,7 +246,7 @@ module Nu =
                         (fun octree ->
                             for entity in entities3d do
                                 let entityState = World.getEntityState entity world
-                                let element = Octelement.make entityState.Visible entityState.Static entityState.LightProbe entityState.Light entityState.Presence entityState.Bounds entity
+                                let element = Octelement.make (entityState.Visible || entityState.AlwaysRender) entityState.Static entityState.LightProbe entityState.Light entityState.Presence entityState.Bounds entity
                                 Octree.removeElement entityState.Presence entityState.Bounds element octree
                             octree)
                         (World.getOctree world)
@@ -290,16 +293,13 @@ module Nu =
             // init miscellaneous F# reach-arounds
             WorldModule.getEmptyEffect <- fun () -> Effect.empty :> obj
 
-            // init vsync
-            Vsync.Init nuConfig.RunSynchronously
-
             // init event world caching
             EventGraph.setEventAddressCaching true
 
             // mark init flag
             Initialized <- true
 
-[<AutoOpen; ModuleBinding>]
+[<AutoOpen>]
 module WorldModule3 =
 
     type World with
@@ -337,7 +337,7 @@ module WorldModule3 =
                  EffectDispatcher2d () :> EntityDispatcher
                  BlockDispatcher2d () :> EntityDispatcher
                  BoxDispatcher2d () :> EntityDispatcher
-                 SideViewCharacterDispatcher () :> EntityDispatcher
+                 CharacterDispatcher2d () :> EntityDispatcher
                  TileMapDispatcher () :> EntityDispatcher
                  TmxMapDispatcher () :> EntityDispatcher
                  LightProbeDispatcher3d () :> EntityDispatcher
@@ -354,6 +354,7 @@ module WorldModule3 =
                  EffectDispatcher3d () :> EntityDispatcher
                  BlockDispatcher3d () :> EntityDispatcher
                  BoxDispatcher3d () :> EntityDispatcher
+                 CharacterDispatcher3d () :> EntityDispatcher
                  TerrainDispatcher () :> EntityDispatcher]
 
         static member private makeDefaultFacets () =
@@ -545,7 +546,7 @@ module WorldModule3 =
                     EventGraph.make eventTracerOpt eventFilter globalSimulantGeneralized eventConfig
                     
                 // make plug-in facets and dispatchers
-                let pluginAssemblies = [|(plugin.GetType ()).Assembly|]
+                let pluginAssemblies = [|plugin.GetType().Assembly|]
                 let pluginFacets = plugin.Birth<Facet> pluginAssemblies
                 let pluginEntityDispatchers = plugin.Birth<EntityDispatcher> pluginAssemblies
                 let pluginGroupDispatchers = plugin.Birth<GroupDispatcher> pluginAssemblies
@@ -572,20 +573,10 @@ module WorldModule3 =
                     | Some (_, dispatcher) -> dispatcher
                     | None -> GameDispatcher ()
 
-                // grab the metadata of the static models so they can be provded to BulletPhysicsEngine
-                let staticModelsMetadata =
-                    seq {
-                        for (packageName, package) in (Metadata.getMetadataPackages ()).Pairs do
-                            for (assetName, metadata) in package.Pairs do
-                                match metadata with
-                                | StaticModelMetadata staticModel -> (asset packageName assetName, staticModel)
-                                | _ -> () } |>
-                    dictPlus HashIdentity.Structural
-
                 // make the world's subsystems
                 let imGui = ImGui (Constants.Render.ResolutionX, Constants.Render.ResolutionY)
                 let physicsEngine2d = AetherPhysicsEngine.make config.Imperative Constants.Physics.Gravity2dDefault
-                let physicsEngine3d = BulletPhysicsEngine.make config.Imperative Constants.Physics.Gravity3dDefault staticModelsMetadata
+                let physicsEngine3d = BulletPhysicsEngine.make config.Imperative Constants.Physics.Gravity3dDefault Metadata.tryGetFilePath Metadata.tryGetStaticModelMetadata
                 let rendererProcess = RendererThread () :> RendererProcess
                 rendererProcess.Start imGui.Fonts (SdlDeps.getWindowOpt sdlDeps)
                 rendererProcess.EnqueueMessage2d (LoadRenderPackage2d Assets.Default.PackageName) // enqueue default package hint

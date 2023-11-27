@@ -3,6 +3,7 @@
 
 namespace Nu.Constants
 open System
+open System.Diagnostics
 open System.Numerics
 open System.Configuration
 open Prime
@@ -54,6 +55,7 @@ module Engine =
     let [<Uniform>] OctreeSize = Vector3 (OctnodeSize * single (pown 2 OctreeDepth))
     let [<Uniform>] mutable EventTracing = match ConfigurationManager.AppSettings.["EventTracing"] with null -> false | tracing -> scvalue<bool> tracing
     let [<Uniform>] mutable EventFilter = match ConfigurationManager.AppSettings.["EventFilter"] with null -> Empty | filter -> scvalue<EventFilter> filter
+    let [<Uniform>] TickDeltaMax = 1.0 / 10.0 * double Stopwatch.Frequency |> int64
 
 [<RequireQualifiedAccess>]
 module Render =
@@ -72,7 +74,7 @@ module Render =
     let [<Literal>] NearPlaneDistanceEnclosed = 0.0625f
     let [<Literal>] FarPlaneDistanceEnclosed = 32.0f
     let [<Literal>] NearPlaneDistanceExposed = FarPlaneDistanceEnclosed
-    let [<Literal>] FarPlaneDistanceExposed = 256.0f
+    let [<Literal>] FarPlaneDistanceExposed = 512.0f
     let [<Literal>] NearPlaneDistanceImposter = FarPlaneDistanceExposed
     let [<Literal>] FarPlaneDistanceImposter = 16384.0f
     let [<Literal>] NearPlaneDistanceOmnipresent = NearPlaneDistanceEnclosed
@@ -104,9 +106,9 @@ module Render =
     let [<Literal>] BonesInfluenceMax = 4
     let [<Literal>] AnimatedModelRateScalar = 30.0f // some arbitrary scale that mixamo fbx exported from blender seems to like...
     let [<Literal>] AnimatedModelMessagesPrealloc = 128
-    let [<Literal>] AnimatedModelSurfaceMessagesPrealloc = 128
     let [<Literal>] GeometryBatchPrealloc = 1024
-    let [<Literal>] TerrainLayersMax = 4
+    let [<Literal>] TerrainLayersMaxSafe = 6
+    let [<Literal>] TerrainLayersMax = 8
     let [<Literal>] LightMapsMaxDeferred = 27
     let [<Literal>] LightMapsMaxForward = 2
     let [<Literal>] LightsMaxDeferred = 64
@@ -130,8 +132,8 @@ module Render =
     let [<Literal>] AttenuationQuadraticDefault = 1.8f
     let [<Literal>] CutoffDefault = 16.0f
     let [<Uniform>] AlbedoDefault = Color.White
-    let [<Literal>] MetallicDefault = 1.0f
     let [<Uniform>] RoughnessDefault = 1.0f
+    let [<Literal>] MetallicDefault = 1.0f
     let [<Literal>] AmbientOcclusionDefault = 1.0f
     let [<Literal>] EmissionDefault = 1.0f
     let [<Literal>] HeightDefault = 1.0f
@@ -149,7 +151,9 @@ module OpenGl =
 [<RequireQualifiedAccess>]
 module Assimp =
 
-    let [<Literal>] PostProcessSteps = Assimp.PostProcessSteps.Triangulate ||| Assimp.PostProcessSteps.GlobalScale
+    // NOTE: I'm not sure how good OptimizeGraph works here. I understand it may cause additional bugs -
+    // https://github.com/search?q=repo%3Aassimp%2Fassimp+OptimizeGraph&type=issues
+    let [<Literal>] PostProcessSteps = Assimp.PostProcessSteps.Triangulate ||| Assimp.PostProcessSteps.OptimizeGraph ||| Assimp.PostProcessSteps.GlobalScale
 
 [<RequireQualifiedAccess>]
 module Audio =
@@ -228,12 +232,12 @@ module Paths =
     let [<Literal>] EnvironmentFilterShaderFilePath = "Assets/Default/EnvironmentFilter.glsl"
     let [<Literal>] PhysicallyBasedDeferredStaticShaderFilePath = "Assets/Default/PhysicallyBasedDeferredStatic.glsl"
     let [<Literal>] PhysicallyBasedDeferredAnimatedShaderFilePath = "Assets/Default/PhysicallyBasedDeferredAnimated.glsl"
+    let [<Literal>] PhysicallyBasedDeferredTerrainShaderFilePath = "Assets/Default/PhysicallyBasedDeferredTerrain.glsl"
     let [<Literal>] PhysicallyBasedDeferredLightMappingShaderFilePath = "Assets/Default/PhysicallyBasedDeferredLightMapping.glsl"
     let [<Literal>] PhysicallyBasedDeferredIrradianceShaderFilePath = "Assets/Default/PhysicallyBasedDeferredIrradiance.glsl"
     let [<Literal>] PhysicallyBasedDeferredEnvironmentFilterShaderFilePath = "Assets/Default/PhysicallyBasedDeferredEnvironmentFilter.glsl"
     let [<Literal>] PhysicallyBasedDeferredSsaoShaderFilePath = "Assets/Default/PhysicallyBasedDeferredSsao.glsl"
     let [<Literal>] PhysicallyBasedDeferredLightingShaderFilePath = "Assets/Default/PhysicallyBasedDeferredLighting.glsl"
-    let [<Literal>] PhysicallyBasedDeferredTerrainShaderFilePath = "Assets/Default/PhysicallyBasedDeferredTerrain.glsl"
     let [<Literal>] PhysicallyBasedForwardShaderFilePath = "Assets/Default/PhysicallyBasedForward.glsl"
     let [<Literal>] PhysicallyBasedBlurShaderFilePath = "Assets/Default/PhysicallyBasedBlur.glsl"
     let [<Literal>] PhysicallyBasedFxaaShaderFilePath = "Assets/Default/PhysicallyBasedFxaa.glsl"

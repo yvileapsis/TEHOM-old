@@ -1359,7 +1359,9 @@ module RigidBodyFacetModule =
         static let getBodyShape (entity : Entity) world =
             let scalar = entity.GetScale world * entity.GetSize world
             let bodyShape = entity.GetBodyShape world
-            World.localizeBodyShape scalar bodyShape world
+            if entity.GetIs2d world
+            then World.localizeBodyShape scalar bodyShape world
+            else bodyShape
 
         static member Properties =
             [define Entity.BodyEnabled true
@@ -1368,11 +1370,11 @@ module RigidBodyFacetModule =
              define Entity.Friction 0.2f
              define Entity.Restitution 0.0f
              define Entity.LinearVelocity v3Zero
-             define Entity.LinearDamping 0.0f
+             define Entity.LinearDamping 0.0f // leave this up to friction by default
              define Entity.AngularVelocity v3Zero
-             define Entity.AngularDamping 0.0f
+             define Entity.AngularDamping 0.2f
              define Entity.AngularFactor v3One
-             define Entity.Substance (Density 1.0f)
+             define Entity.Substance (Mass 1.0f)
              define Entity.GravityOverride None
              define Entity.CollisionDetection Discontinuous
              define Entity.CollisionCategories "1"
@@ -2099,12 +2101,12 @@ module StaticBillboardFacetModule =
         member this.GetAlbedoImage world : Image AssetTag = this.Get (nameof this.AlbedoImage) world
         member this.SetAlbedoImage (value : Image AssetTag) world = this.Set (nameof this.AlbedoImage) value world
         member this.AlbedoImage = lens (nameof this.AlbedoImage) this this.GetAlbedoImage this.SetAlbedoImage
-        member this.GetMetallicImage world : Image AssetTag = this.Get (nameof this.MetallicImage) world
-        member this.SetMetallicImage (value : Image AssetTag) world = this.Set (nameof this.MetallicImage) value world
-        member this.MetallicImage = lens (nameof this.MetallicImage) this this.GetMetallicImage this.SetMetallicImage
         member this.GetRoughnessImage world : Image AssetTag = this.Get (nameof this.RoughnessImage) world
         member this.SetRoughnessImage (value : Image AssetTag) world = this.Set (nameof this.RoughnessImage) value world
         member this.RoughnessImage = lens (nameof this.RoughnessImage) this this.GetRoughnessImage this.SetRoughnessImage
+        member this.GetMetallicImage world : Image AssetTag = this.Get (nameof this.MetallicImage) world
+        member this.SetMetallicImage (value : Image AssetTag) world = this.Set (nameof this.MetallicImage) value world
+        member this.MetallicImage = lens (nameof this.MetallicImage) this this.GetMetallicImage this.SetMetallicImage
         member this.GetAmbientOcclusionImage world : Image AssetTag = this.Get (nameof this.AmbientOcclusionImage) world
         member this.SetAmbientOcclusionImage (value : Image AssetTag) world = this.Set (nameof this.AmbientOcclusionImage) value world
         member this.AmbientOcclusionImage = lens (nameof this.AmbientOcclusionImage) this this.GetAmbientOcclusionImage this.SetAmbientOcclusionImage
@@ -2135,8 +2137,8 @@ module StaticBillboardFacetModule =
             [define Entity.InsetOpt None
              define Entity.MaterialProperties MaterialProperties.defaultProperties
              define Entity.AlbedoImage Assets.Default.MaterialAlbedo
-             define Entity.MetallicImage Assets.Default.MaterialMetallic
              define Entity.RoughnessImage Assets.Default.MaterialRoughness
+             define Entity.MetallicImage Assets.Default.MaterialMetallic
              define Entity.AmbientOcclusionImage Assets.Default.MaterialAmbientOcclusion
              define Entity.EmissionImage Assets.Default.MaterialEmission
              define Entity.NormalImage Assets.Default.MaterialNormal
@@ -2152,8 +2154,8 @@ module StaticBillboardFacetModule =
             let insetOpt = entity.GetInsetOpt world
             let properties = entity.GetMaterialProperties world
             let albedoImage = entity.GetAlbedoImage world
-            let metallicImage = entity.GetMetallicImage world
             let roughnessImage = entity.GetRoughnessImage world
+            let metallicImage = entity.GetMetallicImage world
             let ambientOcclusionImage = entity.GetAmbientOcclusionImage world
             let emissionImage = entity.GetEmissionImage world
             let normalImage = entity.GetNormalImage world
@@ -2167,7 +2169,7 @@ module StaticBillboardFacetModule =
             World.enqueueRenderMessage3d
                 (RenderBillboard
                     { Absolute = absolute; ModelMatrix = affineMatrixOffset; InsetOpt = insetOpt; MaterialProperties = properties
-                      AlbedoImage = albedoImage; MetallicImage = metallicImage; RoughnessImage = roughnessImage; AmbientOcclusionImage = ambientOcclusionImage; EmissionImage = emissionImage; NormalImage = normalImage; HeightImage = heightImage
+                      AlbedoImage = albedoImage; RoughnessImage = roughnessImage; MetallicImage = metallicImage; AmbientOcclusionImage = ambientOcclusionImage; EmissionImage = emissionImage; NormalImage = normalImage; HeightImage = heightImage
                       MinFilterOpt = minFilterOpt; MagFilterOpt = magFilterOpt; RenderType = renderType })
                 world
 
@@ -2195,12 +2197,12 @@ module BasicStaticBillboardEmitterFacetModule =
         member this.GetEmitterAlbedoImage world : Image AssetTag = this.Get (nameof this.EmitterAlbedoImage) world
         member this.SetEmitterAlbedoImage (value : Image AssetTag) world = this.Set (nameof this.EmitterAlbedoImage) value world
         member this.EmitterAlbedoImage = lens (nameof this.EmitterAlbedoImage) this this.GetEmitterAlbedoImage this.SetEmitterAlbedoImage
-        member this.GetEmitterMetallicImage world : Image AssetTag = this.Get (nameof this.EmitterMetallicImage) world
-        member this.SetEmitterMetallicImage (value : Image AssetTag) world = this.Set (nameof this.EmitterMetallicImage) value world
-        member this.EmitterMetallicImage = lens (nameof this.EmitterMetallicImage) this this.GetEmitterMetallicImage this.SetEmitterMetallicImage
         member this.GetEmitterRoughnessImage world : Image AssetTag = this.Get (nameof this.EmitterRoughnessImage) world
         member this.SetEmitterRoughnessImage (value : Image AssetTag) world = this.Set (nameof this.EmitterRoughnessImage) value world
         member this.EmitterRoughnessImage = lens (nameof this.EmitterRoughnessImage) this this.GetEmitterRoughnessImage this.SetEmitterRoughnessImage
+        member this.GetEmitterMetallicImage world : Image AssetTag = this.Get (nameof this.EmitterMetallicImage) world
+        member this.SetEmitterMetallicImage (value : Image AssetTag) world = this.Set (nameof this.EmitterMetallicImage) value world
+        member this.EmitterMetallicImage = lens (nameof this.EmitterMetallicImage) this this.GetEmitterMetallicImage this.SetEmitterMetallicImage
         member this.GetEmitterAmbientOcclusionImage world : Image AssetTag = this.Get (nameof this.EmitterAmbientOcclusionImage) world
         member this.SetEmitterAmbientOcclusionImage (value : Image AssetTag) world = this.Set (nameof this.EmitterAmbientOcclusionImage) value world
         member this.EmitterAmbientOcclusionImage = lens (nameof this.EmitterAmbientOcclusionImage) this this.GetEmitterAmbientOcclusionImage this.SetEmitterAmbientOcclusionImage
@@ -2252,8 +2254,8 @@ module BasicStaticBillboardEmitterFacetModule =
                           Restitution = Constants.Particles.RestitutionDefault }
                     Absolute = transform.Absolute
                     AlbedoImage = entity.GetEmitterAlbedoImage world
-                    MetallicImage = entity.GetEmitterMetallicImage world
                     RoughnessImage = entity.GetEmitterRoughnessImage world
+                    MetallicImage = entity.GetEmitterMetallicImage world
                     AmbientOcclusionImage = entity.GetEmitterAmbientOcclusionImage world
                     EmissionImage = entity.GetEmitterEmissionImage world
                     NormalImage = entity.GetEmitterNormalImage world
@@ -2299,14 +2301,14 @@ module BasicStaticBillboardEmitterFacetModule =
             let world = updateEmitter (fun emitter -> if assetNeq emitter.AlbedoImage emitterAlbedoImage then { emitter with AlbedoImage = emitterAlbedoImage } else emitter) evt.Subscriber world
             (Cascade, world)
 
-        static let handleEmitterMetallicImageChange evt world =
-            let emitterMetallicImage = evt.Data.Value :?> Image AssetTag
-            let world = updateEmitter (fun emitter -> if assetNeq emitter.MetallicImage emitterMetallicImage then { emitter with MetallicImage = emitterMetallicImage } else emitter) evt.Subscriber world
-            (Cascade, world)
-
         static let handleEmitterRoughnessImageChange evt world =
             let emitterRoughnessImage = evt.Data.Value :?> Image AssetTag
             let world = updateEmitter (fun emitter -> if assetNeq emitter.RoughnessImage emitterRoughnessImage then { emitter with RoughnessImage = emitterRoughnessImage } else emitter) evt.Subscriber world
+            (Cascade, world)
+
+        static let handleEmitterMetallicImageChange evt world =
+            let emitterMetallicImage = evt.Data.Value :?> Image AssetTag
+            let world = updateEmitter (fun emitter -> if assetNeq emitter.MetallicImage emitterMetallicImage then { emitter with MetallicImage = emitterMetallicImage } else emitter) evt.Subscriber world
             (Cascade, world)
 
         static let handleEmitterAmbientOcclusionImageChange evt world =
@@ -2416,8 +2418,8 @@ module BasicStaticBillboardEmitterFacetModule =
             [define Entity.SelfDestruct false
              define Entity.EmitterMaterialProperties MaterialProperties.defaultProperties
              define Entity.EmitterAlbedoImage Assets.Default.MaterialAlbedo
-             define Entity.EmitterMetallicImage Assets.Default.MaterialMetallic
              define Entity.EmitterRoughnessImage Assets.Default.MaterialRoughness
+             define Entity.EmitterMetallicImage Assets.Default.MaterialMetallic
              define Entity.EmitterAmbientOcclusionImage Assets.Default.MaterialAmbientOcclusion
              define Entity.EmitterEmissionImage Assets.Default.MaterialEmission
              define Entity.EmitterNormalImage Assets.Default.MaterialNormal
@@ -2442,8 +2444,8 @@ module BasicStaticBillboardEmitterFacetModule =
             let world = World.sense handleRotationChange (entity.GetChangeEvent (nameof entity.Rotation)) entity (nameof BasicStaticBillboardEmitterFacet) world
             let world = World.sense handleEmitterMaterialPropertiesChange (entity.GetChangeEvent (nameof entity.EmitterMaterialProperties)) entity (nameof BasicStaticBillboardEmitterFacet) world
             let world = World.sense handleEmitterAlbedoImageChange (entity.GetChangeEvent (nameof entity.EmitterAlbedoImage)) entity (nameof BasicStaticBillboardEmitterFacet) world
-            let world = World.sense handleEmitterMetallicImageChange (entity.GetChangeEvent (nameof entity.EmitterMetallicImage)) entity (nameof BasicStaticBillboardEmitterFacet) world
             let world = World.sense handleEmitterRoughnessImageChange (entity.GetChangeEvent (nameof entity.EmitterRoughnessImage)) entity (nameof BasicStaticBillboardEmitterFacet) world
+            let world = World.sense handleEmitterMetallicImageChange (entity.GetChangeEvent (nameof entity.EmitterMetallicImage)) entity (nameof BasicStaticBillboardEmitterFacet) world
             let world = World.sense handleEmitterAmbientOcclusionImageChange (entity.GetChangeEvent (nameof entity.EmitterAmbientOcclusionImage)) entity (nameof BasicStaticBillboardEmitterFacet) world
             let world = World.sense handleEmitterEmissionImageChange (entity.GetChangeEvent (nameof entity.EmitterEmissionImage)) entity (nameof BasicStaticBillboardEmitterFacet) world
             let world = World.sense handleEmitterNormalImageChange (entity.GetChangeEvent (nameof entity.EmitterNormalImage)) entity (nameof BasicStaticBillboardEmitterFacet) world
@@ -2487,8 +2489,8 @@ module BasicStaticBillboardEmitterFacetModule =
                         let emitterProperties = entity.GetEmitterMaterialProperties world
                         let materialProperties =
                             { AlbedoOpt = match emitterProperties.AlbedoOpt with ValueSome albedo -> ValueSome albedo | ValueNone -> descriptor.MaterialProperties.AlbedoOpt
-                              MetallicOpt = match emitterProperties.MetallicOpt with ValueSome metallic -> ValueSome metallic | ValueNone -> descriptor.MaterialProperties.MetallicOpt
                               RoughnessOpt = match emitterProperties.RoughnessOpt with ValueSome roughness -> ValueSome roughness | ValueNone -> descriptor.MaterialProperties.RoughnessOpt
+                              MetallicOpt = match emitterProperties.MetallicOpt with ValueSome metallic -> ValueSome metallic | ValueNone -> descriptor.MaterialProperties.MetallicOpt
                               AmbientOcclusionOpt = match emitterProperties.AmbientOcclusionOpt with ValueSome ambientOcclusion -> ValueSome ambientOcclusion | ValueNone -> descriptor.MaterialProperties.AmbientOcclusionOpt
                               EmissionOpt = match emitterProperties.EmissionOpt with ValueSome emission -> ValueSome emission | ValueNone -> descriptor.MaterialProperties.EmissionOpt
                               HeightOpt = match emitterProperties.HeightOpt with ValueSome height -> ValueSome height | ValueNone -> descriptor.MaterialProperties.HeightOpt
@@ -2498,8 +2500,8 @@ module BasicStaticBillboardEmitterFacetModule =
                                 { Absolute = descriptor.Absolute
                                   MaterialProperties = materialProperties
                                   AlbedoImage = descriptor.AlbedoImage
-                                  MetallicImage = descriptor.MetallicImage
                                   RoughnessImage = descriptor.RoughnessImage
+                                  MetallicImage = descriptor.MetallicImage
                                   AmbientOcclusionImage = descriptor.AmbientOcclusionImage
                                   EmissionImage = descriptor.EmissionImage
                                   NormalImage = descriptor.NormalImage
@@ -2695,7 +2697,7 @@ module AnimatedModelFacetModule =
             [define Entity.StartTime GameTime.zero
              define Entity.InsetOpt None
              define Entity.MaterialProperties MaterialProperties.defaultProperties
-             define Entity.Animations [|{ StartTime = GameTime.zero; LifeTimeOpt = None; Name = "Idle"; Playback = Loop; Rate = 1.0f; Weight = 1.0f; BoneFilterOpt = None }|]
+             define Entity.Animations [|{ StartTime = GameTime.zero; LifeTimeOpt = None; Name = "Armature|Idle"; Playback = Loop; Rate = 1.0f; Weight = 1.0f; BoneFilterOpt = None }|]
              define Entity.AnimatedModel Assets.Default.AnimatedModel]
 
         override this.Render (entity, world) =
@@ -2775,6 +2777,9 @@ module TerrainFacetModule =
         member this.GetTintImage world : Image AssetTag = this.Get (nameof this.TintImage) world
         member this.SetTintImage (value : Image AssetTag) world = this.Set (nameof this.TintImage) value world
         member this.TintImage = lens (nameof this.TintImage) this this.GetTintImage this.SetTintImage
+        member this.GetNormalImageOpt world : Image AssetTag option = this.Get (nameof this.NormalImageOpt) world
+        member this.SetNormalImageOpt (value : Image AssetTag option) world = this.Set (nameof this.NormalImageOpt) value world
+        member this.NormalImageOpt = lens (nameof this.NormalImageOpt) this this.GetNormalImageOpt this.SetNormalImageOpt
         member this.GetTiles world : Vector2 = this.Get (nameof this.Tiles) world
         member this.SetTiles (value : Vector2) world = this.Set (nameof this.Tiles) value world
         member this.Tiles = lens (nameof this.Tiles) this this.GetTiles this.SetTiles
@@ -2796,7 +2801,7 @@ module TerrainFacetModule =
         member this.TryGetTerrainQuadSize world =
             let bounds = this.GetBounds world
             match this.TryGetTerrainResolution world with
-            | Some resolution -> Some (v2 bounds.Size.X bounds.Size.Z / v2 (single resolution.X) (single resolution.Y))
+            | Some resolution -> Some (v2 (bounds.Size.X / single (dec resolution.X)) (bounds.Size.Z / single (dec resolution.Y)))
             | None -> None
 
     /// Augments an entity with a rigid 3d terrain.
@@ -2804,66 +2809,107 @@ module TerrainFacetModule =
         inherit Facet (true)
 
         static member Properties =
-            [define Entity.Size (v3 1024.0f 128.0f 1024.0f)
+            [define Entity.Size (v3 512.0f 128.0f 512.0f)
              define Entity.Presence Omnipresent
+             define Entity.AlwaysRender true
+             define Entity.BodyEnabled true
+             define Entity.Friction 0.5f
+             define Entity.Restitution 0.0f
+             define Entity.CollisionCategories "1"
+             define Entity.CollisionMask Constants.Physics.CollisionWildcard
+             define Entity.InsetOpt None
              define Entity.TerrainMaterialProperties TerrainMaterialProperties.defaultProperties
              define Entity.TerrainMaterial
-                (FlatMaterial
-                    { AlbedoImage = Assets.Default.MaterialAlbedo
-                      RoughnessImage = Assets.Default.MaterialRoughness
-                      AmbientOcclusionImage = Assets.Default.MaterialAmbientOcclusion
-                      NormalImage = Assets.Default.MaterialNormal
-                      HeightImage = Assets.Default.MaterialHeight })
-             define Entity.TintImage Assets.Default.MaterialAlbedo
-             define Entity.NormalImage Assets.Default.MaterialNormal
-             define Entity.Tiles v2One
-             define Entity.HeightMap (ImageHeightMap Assets.Default.HeightMap)
-             define Entity.Segments v2iOne]
+                (BlendMaterial
+                    { TerrainLayers =
+                        [|{ AlbedoImage = Assets.Default.TerrainLayerAlbedo
+                            RoughnessImage = Assets.Default.TerrainLayerRoughness
+                            AmbientOcclusionImage = Assets.Default.TerrainLayerAmbientOcclusion
+                            NormalImage = Assets.Default.TerrainLayerNormal
+                            HeightImage = Assets.Default.TerrainLayerHeight }
+                          { AlbedoImage = Assets.Default.TerrainLayer2Albedo
+                            RoughnessImage = Assets.Default.TerrainLayer2Roughness
+                            AmbientOcclusionImage = Assets.Default.TerrainLayer2AmbientOcclusion
+                            NormalImage = Assets.Default.TerrainLayer2Normal
+                            HeightImage = Assets.Default.TerrainLayer2Height }|]
+                      BlendMap =
+                          RedsMap
+                            [|Assets.Default.TerrainLayerBlend
+                              Assets.Default.TerrainLayer2Blend|]})
+             define Entity.TintImage Assets.Default.TerrainTint
+             define Entity.NormalImageOpt None
+             define Entity.Tiles (v2 256.0f 256.0f)
+             define Entity.HeightMap (RawHeightMap { Resolution = v2i 513 513; RawFormat = RawUInt16 LittleEndian; RawAsset = Assets.Default.HeightMap })
+             define Entity.Segments v2iOne
+             computed Entity.BodyId (fun (entity : Entity) _ -> { BodySource = entity; BodyIndex = 0 }) None]
 
         override this.Register (entity, world) =
-            ignore entity
-            // TODO: optionally implement registration behavior for the faceted entity.
-            world
-
-        override this.Unregister (entity, world) =
-            ignore entity
-            // TODO: optionally implement unregistration behavior for the faceted entity.
+            let world = World.sense (fun _ world -> (Cascade, entity.PropagatePhysics world)) (entity.ChangeEvent (nameof entity.BodyEnabled)) entity (nameof TerrainFacet) world
+            let world = World.sense (fun _ world -> (Cascade, entity.PropagatePhysics world)) (entity.ChangeEvent (nameof entity.Transform)) entity (nameof TerrainFacet) world
+            let world = World.sense (fun _ world -> (Cascade, entity.PropagatePhysics world)) (entity.ChangeEvent (nameof entity.Friction)) entity (nameof TerrainFacet) world
+            let world = World.sense (fun _ world -> (Cascade, entity.PropagatePhysics world)) (entity.ChangeEvent (nameof entity.Restitution)) entity (nameof TerrainFacet) world
+            let world = World.sense (fun _ world -> (Cascade, entity.PropagatePhysics world)) (entity.ChangeEvent (nameof entity.CollisionCategories)) entity (nameof TerrainFacet) world
+            let world = World.sense (fun _ world -> (Cascade, entity.PropagatePhysics world)) (entity.ChangeEvent (nameof entity.CollisionMask)) entity (nameof TerrainFacet) world
+            let world = World.sense (fun _ world -> (Cascade, entity.PropagatePhysics world)) (entity.ChangeEvent (nameof entity.HeightMap)) entity (nameof TerrainFacet) world
             world
 
         override this.RegisterPhysics (entity, world) =
-            ignore entity
-            // TODO: optionally implement registration behavior for the faceted entity.
-            world
+            match entity.TryGetTerrainResolution world with
+            | Some resolution ->
+                let mutable transform = entity.GetTransform world
+                let bodyTerrain =
+                    { Resolution = resolution
+                      Bounds = transform.Bounds
+                      HeightMap = entity.GetHeightMap world
+                      TransformOpt = None
+                      PropertiesOpt = None }
+                let bodyProperties =
+                    { BodyIndex = (entity.GetBodyId world).BodyIndex
+                      Center = transform.Center
+                      Rotation = transform.Rotation
+                      BodyShape = BodyTerrain bodyTerrain
+                      BodyType = Static
+                      SleepingAllowed = true
+                      Enabled = entity.GetBodyEnabled world
+                      Friction = entity.GetFriction world
+                      Restitution = entity.GetRestitution world
+                      LinearVelocity = v3Zero
+                      LinearDamping = 0.0f
+                      AngularVelocity = v3Zero
+                      AngularDamping = 0.0f
+                      AngularFactor = v3Zero
+                      Substance = Mass 0.0f
+                      GravityOverride = None
+                      CollisionDetection = Discontinuous
+                      CollisionCategories = Physics.categorizeCollisionMask (entity.GetCollisionCategories world)
+                      CollisionMask = Physics.categorizeCollisionMask (entity.GetCollisionMask world)
+                      Sensor = false }
+                World.createBody false (entity.GetBodyId world) bodyProperties world
+            | None -> world
 
         override this.UnregisterPhysics (entity, world) =
-            ignore entity
-            // TODO: optionally implement unregistration behavior for the faceted entity.
-            world
-
-        override this.Update (entity, world) =
-            ignore entity
-            // TODO: optionally implement update code for the faceted entity.
-            world
+            World.destroyBody false (entity.GetBodyId world) world
 
         override this.Render (entity, world) =
             let mutable transform = entity.GetTransform world
-            let absolute = transform.Absolute
             let terrainDescriptor =
                 { Bounds = transform.Bounds
+                  InsetOpt = entity.GetInsetOpt world
                   MaterialProperties = entity.GetTerrainMaterialProperties world
                   Material = entity.GetTerrainMaterial world
                   TintImage = entity.GetTintImage world
-                  NormalImage = entity.GetNormalImage world
+                  NormalImageOpt = entity.GetNormalImageOpt world
                   Tiles = entity.GetTiles world
                   HeightMap = entity.GetHeightMap world
                   Segments = entity.GetSegments world }
             World.enqueueRenderMessage3d
                 (RenderTerrain
-                    { Absolute = absolute
+                    { Absolute = transform.Absolute
+                      Visible = transform.Visible
                       TerrainDescriptor = terrainDescriptor })
                 world
 
         override this.GetQuickSize (entity, world) =
             match entity.TryGetTerrainResolution world with
-            | Some resolution -> v3 (single resolution.X) 128.0f (single resolution.Y)
-            | None -> v3 1024.0f 128.0f 1024.0f
+            | Some resolution -> v3 (single (dec resolution.X)) 128.0f (single (dec resolution.Y))
+            | None -> v3 512.0f 128.0f 512.0f
