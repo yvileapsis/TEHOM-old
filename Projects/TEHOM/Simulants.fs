@@ -29,5 +29,6 @@ module Simulants =
     let Gameplay = Game / "Gameplay"
     let GameplayGui = Gameplay / "Gui"
     let GameplayTime = GameplayGui / "Time"
+    let GameplayTextBox = GameplayGui / "TextBox"
     let GameplayQuit = GameplayGui / "Quit"
     let GameplayScene = Gameplay / "Scene"
