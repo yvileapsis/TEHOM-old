@@ -4,6 +4,9 @@ open System
 open Prime
 open Nu
 
+open Entity
+open Trait
+
 [<AutoOpen>]
 module Gameplay =
 
@@ -19,12 +22,25 @@ module Gameplay =
     // you could use `Time : single` instead.
     type Gameplay = {
         Time : int64
-        State : GameplayState 
-    }
+        State : GameplayState
+
+        // I would like for this model to be possible to save/load and also move between screens
+        Model : Model.Model
+
+        Display : string
+    } with
+        static member makeDefault = {
+            Time = 0
+            State = Playing
+            Model = YamlReader.FillModelWithYaml Model.Model.makeDefault
+            Display = "Hello world!"
+        }
 
     // this is our MMCC message type.
     type GameplayMessage =
         | Update
+        | SetDisplayedString of string
+        | SetDisplayedStringToEntityDescription of EntityID
         | StartQuitting
         | FinishQuitting
         interface Message
@@ -38,12 +54,15 @@ module Gameplay =
     // this is the screen dispatcher that defines the screen where gameplay takes place. Note that we just use the
     // empty Command type because there are no commands needed for this template.
     type GameplayDispatcher () =
-        inherit ScreenDispatcher<Gameplay, GameplayMessage, Command> ({ Time = 0; State = Quit })
+        inherit ScreenDispatcher<Gameplay, GameplayMessage, Command> ({ Gameplay.makeDefault with State = Quitting })
 
         // here we define the screen's properties and event handling
         override this.Initialize (_, _) = [
             Screen.UpdateEvent => Update
             Screen.DeselectingEvent => FinishQuitting
+
+            // no idea where to put debug test stuff, TODO: remove
+            Screen.RenderEvent => SetDisplayedStringToEntityDescription (EntityID.ID "player")
         ]
 
         // here we handle the above messages
@@ -51,6 +70,17 @@ module Gameplay =
             match message with
             | Update ->
                 just { gameplay with Time = inc gameplay.Time }
+            | SetDisplayedString str ->
+                just { gameplay with Display = str}
+            | SetDisplayedStringToEntityDescription entityID ->
+                let description =
+                    match Map.tryFind entityID gameplay.Model.Description with
+                    | Some description ->
+                        match description.Description with
+                        | String x -> x
+                        | _ -> "did not find player description"
+                    | _ -> "did not find player, weird!"
+                just { gameplay with Display = description }
             | StartQuitting ->
                 just { gameplay with State = Quitting }
             | FinishQuitting ->
@@ -72,7 +102,7 @@ module Gameplay =
                     Entity.Position == v3 0.0f 132.0f 0.0f
                     Entity.Elevation == 10.0f
                     Entity.Justification == Justified (JustifyCenter, JustifyMiddle)
-                    Entity.Text := "Hello world!"
+                    Entity.Text := gameplay.Display
                 ]
 
                 // quit

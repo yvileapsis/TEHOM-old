@@ -5,16 +5,12 @@ open System
     To tl;dr the point of the project:
     Create a horror text game with a systemic support for body horror to then infuse it with text generation.
 
-    Horror situations that should be possible in the simulation:
-    * Corpses coming alive;
-    * Monsters with arrays of limbs;
-    * You traversing a large enough creature from the inside a la James Bartley.
-    * Parasites traversing your body;
-    * Your limbs 'dying' while still attached to your body;
-    * Your limb growing multiple eyes that you can see through;
-    * Your limb growing multiple eyes that you can not see through;     <- some concept of ownership or control is definitely needed
-    * Your limb leaving you to become its own creature that can be either hostile or friendly to player;
-    * Various supernatural things like telekenesis or teleportation;
+    Main goals for the foreseeable future:
+    * Add good way of mass-loading entities from some form of config file, currently thinking yaml
+    * Add some rudimentary display of context around player entity
+    * Add some form of text input that gets processed as actions, rudimentary string comparison would do
+    * Make it possible to move player entity from room 1 to room 2
+
 *)
 
 module Screens =
@@ -29,7 +25,7 @@ module Screens =
 module GUI =
 
     // Rough idea for GUI, main elements are input box and scene (current block of text shown)
-    type GUI = 
+    type GUI =
         | InputBox
         | Scene
         | Stats
@@ -42,14 +38,14 @@ module Entity =
         | ID of string
         | GUID of Guid
 
-module Ability = 
+module Ability =
 
     // Limits what sort of actions are allowed for each level, i.e. rudimentary brain will disallow talking even with a functioning mouth
     // TODO: come up with better names
     // Main point of thinking is to distinguish 'dead' entities from 'alive', as well as animalistic entities,
     // from ones of higher reasoning and ones of beyond-human reasoning capatibilities
     // 'alive' entity always has at least one free functioning task-processing limb, be it brain, processor or whatever else
-    type ThinkingLevel = 
+    type ThinkingLevel =
         | Rudimentary
         | Animalistic
         | Human
@@ -77,7 +73,7 @@ module Ability =
     // List of abilities 'alive' entities can have.
     // For composed entities those should be generated based on their structure and are used to filter for actions
     // the combined entity can do.
-    type Ability = 
+    type Ability =
         | CanThink of ThinkingLevel
         | CanSense of SenseType
         | CanGrab of GrabType
@@ -101,7 +97,7 @@ module Trait =
     }
 
     // Come up how to unite this with contains as only something that has volume can contain things.
-    type Volume = 
+    type Volume =
         | SumOfContained
         | Volume of int64
         | Infinite
@@ -282,4 +278,17 @@ module Actions =
     * Talking system -- Filter by CanTalk -> mouth, lungs (?)
     * Attack system - Filter by IsWeapon -> paws, mouth
     New systems can be added later as needed, as it's literally just a filter over the composed entity.
+
+
+
+    Horror situations that should be possible in the simulation:
+    * Corpses coming alive;
+    * Monsters with arrays of limbs;
+    * You traversing a large enough creature from the inside a la James Bartley.
+    * Parasites traversing your body;
+    * Your limbs 'dying' while still attached to your body;
+    * Your limb growing multiple eyes that you can see through;
+    * Your limb growing multiple eyes that you can not see through;     <- some concept of ownership or control is definitely needed
+    * Your limb leaving you to become its own creature that can be either hostile or friendly to player;
+    * Various supernatural things like telekenesis or teleportation;
 *)

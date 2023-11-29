@@ -24,7 +24,5 @@ module Program =
         // initialize Nu
         Nu.init worldConfig.NuConfig
 
-//      YamlReader.ReadDefaultData ()
-
         // run the engine with the given config and plugin
         World.run worldConfig (MyGamePlugin ())

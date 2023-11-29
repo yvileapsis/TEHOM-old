@@ -61,11 +61,11 @@ module Tehom =
         ]
 
         // here we handle the above messages
-        override this.Message (model, message, _, world) =
+        override this.Message (model, message, game, world) =
             match message with
             | ShowTitle -> just Title
             | ShowCredits -> just Credits
-            | ShowGameplay -> just (Gameplay { Time = 0L; State = Playing })
+            | ShowGameplay -> just (Gameplay Gameplay.makeDefault)
             | Update ->
                 match model with
                 | Gameplay gameplay ->

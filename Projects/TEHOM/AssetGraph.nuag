@@ -6,6 +6,8 @@
    [Assets Assets/Default [ogg wav] [Audio] []]
    [Assets Assets/Default [csv nueffect nuscript] [Symbol] []]
    [Assets Assets/Default [nugroup tmx tsx] [] []]]]
+ [Entities
+  [[Assets Assets/Entities [json yaml yml] [] []]]]
  [Gameplay
   [[Assets Assets/Gameplay [psd] [Render2d Render3d] [PsdToPng]]
    [Assets Assets/Gameplay [bmp jpeg jpg png] [Render2d Render3d] []]
