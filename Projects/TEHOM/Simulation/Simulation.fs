@@ -143,19 +143,16 @@ module Trait =
     }
 
     // Signifies physical attachment, i.e. finger is attached to palm, door is attached to wall.
+    // Trait that determines what other entities this entity is attached to.
+    // The main issue is that these relations go both ways and can be influenced from either side, 
+    // i.e. to use the example from 'Attached': finger can be separated from the hand by a sword,
+    // hand can be separated from the finger by a sword, either action result is supposed to be the same.
+
     type Attached =
         | Strongly
         | WithForce of int
         | Weakly
 
-    // Trait that determines what other entities this entity is attached to.
-    // The main issue is that these relations go both ways and can be influenced from either side, 
-    // i.e. to use the example from 'Attached': finger can be separated from the hand by a sword,
-    // hand can be separated from the finger by a sword, either action result is supposed to be the same.
-    // Not sure how is this supposed to be represented correctly, maybe it shouldn't be trait at all.
-    type AttachmentTrait = {
-        Objects: (Attached * EntityID) list
-    }
 
     // List of traits entities can have, with description being common to most entities.
     // I feel like I am thinking about this in too object-oriented ECS sort of a way.
@@ -169,7 +166,6 @@ module Trait =
         | HasAbilities of AbilitiesTrait
         | HasEffect
         | ComposedOf of CompositionTrait
-        | AttachedTo of AttachmentTrait
     // Not used as every trait is its own map in the model.
 
 module Model =
@@ -181,7 +177,7 @@ module Model =
         Entities: EntityID list
 
         ComposedOf: Map<EntityID, CompositionTrait>
-        AttachedTo: Map<EntityID, AttachmentTrait>
+        AttachedTo: List<Set<EntityID> * Attached>
 
         Description: Map<EntityID, DescriptionTrait>
         Volume: Map<EntityID, VolumeTrait>
