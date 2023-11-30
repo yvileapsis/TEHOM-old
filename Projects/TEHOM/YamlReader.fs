@@ -6,7 +6,7 @@ open Trait
 
 module YamlReader =
 
-    type WorldData = YamlConfig<"Assets\Entities\default.yaml">
+    type WorldData = YamlConfig<"Assets/Entities/default.yaml">
 
     let createYamlDescription id name description =
         let yamlDescription = new WorldData.entities_Item_Type ()

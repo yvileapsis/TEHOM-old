@@ -43,7 +43,7 @@ module Ability =
     // Limits what sort of actions are allowed for each level, i.e. rudimentary brain will disallow talking even with a functioning mouth
     // TODO: come up with better names
     // Main point of thinking is to distinguish 'dead' entities from 'alive', as well as animalistic entities,
-    // from ones of higher reasoning and ones of beyond-human reasoning capatibilities
+    // from ones of higher reasoning and ones of beyond-human reasoning capabilities
     // 'alive' entity always has at least one free functioning task-processing limb, be it brain, processor or whatever else
     type ThinkingLevel =
         | Rudimentary
@@ -190,7 +190,7 @@ module Model =
         static member makeDefault = {
             Entities = []
             ComposedOf = Map.empty
-            AttachedTo = Map.empty
+            AttachedTo = List.empty
             Description = Map.empty
             Volume = Map.empty
             Mass = Map.empty
@@ -238,7 +238,6 @@ module Actions =
 
 (* 
     Entities can be looked from two angles, structural composition, of what consists of what:
-
     Table is composed of: table top, 4 table legs.
 
     And physical composition: 
