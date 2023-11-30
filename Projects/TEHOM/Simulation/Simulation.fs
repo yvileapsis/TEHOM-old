@@ -10,7 +10,6 @@ open System
     * Add some rudimentary display of context around player entity
     * Add some form of text input that gets processed as actions, rudimentary string comparison would do
     * Make it possible to move player entity from room 1 to room 2
-
 *)
 
 module Screens =
@@ -68,7 +67,7 @@ module Ability =
 
     type GrabType =
         | Grip of int
-        | Telekenesis of int
+        | Telekinesis of int
 
     // List of abilities 'alive' entities can have.
     // For composed entities those should be generated based on their structure and are used to filter for actions
@@ -207,7 +206,7 @@ module Actions =
 
         | Use
         | Equip
-        | Unequip
+        | UnEquip
         | Take
         | Drop
         | Give
@@ -228,7 +227,7 @@ module Actions =
 
         | Use
         | Equip
-        | Unequip
+        | UnEquip
         | Take
         | Drop
         | Give
@@ -285,5 +284,5 @@ module Actions =
     * Your limb growing multiple eyes that you can see through;
     * Your limb growing multiple eyes that you can not see through;     <- some concept of ownership or control is definitely needed
     * Your limb leaving you to become its own creature that can be either hostile or friendly to player;
-    * Various supernatural things like telekenesis or teleportation;
+    * Various supernatural things like telekinesis or teleportation;
 *)

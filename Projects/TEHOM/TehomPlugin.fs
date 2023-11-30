@@ -11,8 +11,8 @@ type MyGamePlugin () =
     // this exposes different editing modes in the editor
     override this.EditModes =
         Map.ofSeq [
-            "Splash", fun world -> Game.SetModel Splash world
-            "Title", fun world -> Game.SetModel Title world
-            "Credits", fun world -> Game.SetModel Credits world
-            "Gameplay", fun world -> Game.SetModel (Gameplay Gameplay.makeDefault) world
+            "Splash", Game.SetModel Splash
+            "Title", Game.SetModel Title
+            "Credits", Game.SetModel Credits
+            "Gameplay", Game.SetModel (Gameplay Gameplay.makeDefault)
         ]
