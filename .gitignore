@@ -50,6 +50,7 @@ packages/
 # VSCode #
 ##########
 .vscode
+.idea/
 
 ###############
 # Local Items #
