@@ -19,10 +19,22 @@ type DragEyeState =
 type [<SymbolicExpansion>] GaiaState =
     { ProjectDllPath : string
       ProjectEditModeOpt : string option
-      ProjectImperativeExecution : bool }
-    static member make dllPath editModeOpt imperativeExecution =
+      ProjectImperativeExecution : bool
+      ProjectFreshlyLoaded : bool
+      DesiredEyeCenter2d : Vector2
+      DesiredEyeCenter3d : Vector3
+      DesiredEyeRotation3d : Quaternion
+      MasterSoundVolume : single
+      MasterSongVolume : single }
+    static member make dllPath editModeOpt imperativeExecution freshlyLoaded desiredEyeCenter2d desiredEyeCenter3d desiredEyeRotation3d masterSoundVolume masterSongVolume =
         { ProjectDllPath = dllPath
           ProjectEditModeOpt = editModeOpt
-          ProjectImperativeExecution = imperativeExecution }
+          ProjectImperativeExecution = imperativeExecution
+          ProjectFreshlyLoaded = freshlyLoaded
+          DesiredEyeCenter2d = desiredEyeCenter2d
+          DesiredEyeCenter3d = desiredEyeCenter3d
+          DesiredEyeRotation3d = desiredEyeRotation3d
+          MasterSoundVolume = masterSoundVolume
+          MasterSongVolume = masterSongVolume }
     static member defaultState =
-        GaiaState.make "" None false
+        GaiaState.make "" None false false v2Zero Constants.Engine.EyeCenter3dDefault quatIdentity Constants.Audio.SoundVolumeDefault Constants.Audio.SongVolumeDefault

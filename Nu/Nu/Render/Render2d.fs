@@ -133,6 +133,12 @@ type LayeredOperation2dComparer () =
                 if assetNameCompare <> 0 then assetNameCompare
                 else strCmp left.AssetTag.PackageName right.AssetTag.PackageName
 
+/// The internally used package state for the 2d OpenGL renderer.
+type [<ReferenceEquality>] private GlPackageState2d =
+    { TextureMemo : OpenGL.Texture.TextureMemo
+      CubeMapMemo : OpenGL.CubeMap.CubeMapMemo
+      AssimpSceneMemo : OpenGL.Assimp.AssimpSceneMemo }
+
 /// The OpenGL implementation of Renderer2d.
 type [<ReferenceEquality>] GlRenderer2d =
     private
@@ -141,8 +147,8 @@ type [<ReferenceEquality>] GlRenderer2d =
           RenderSpriteQuad : uint * uint * uint // TODO: release these resources on clean-up.
           RenderTextQuad : uint * uint * uint // TODO: release these resources on clean-up.
           RenderSpriteBatchEnv : OpenGL.SpriteBatch.SpriteBatchEnv
-          RenderPackages : Packages<RenderAsset, unit>
-          mutable RenderPackageCachedOpt : string * Package<RenderAsset, unit> // OPTIMIZATION: nullable for speed.
+          RenderPackages : Packages<RenderAsset, GlPackageState2d>
+          mutable RenderPackageCachedOpt : string * Package<RenderAsset, GlPackageState2d> // OPTIMIZATION: nullable for speed.
           mutable RenderAssetCachedOpt : string * RenderAsset
           RenderLayeredOperations : LayeredOperation2d List }
 
@@ -160,15 +166,15 @@ type [<ReferenceEquality>] GlRenderer2d =
         | StaticModelAsset _ -> ()
         | AnimatedModelAsset _ -> ()
 
-    static member private tryLoadRenderAsset (asset : obj Asset) renderer =
+    static member private tryLoadRenderAsset packageState (asset : obj Asset) renderer =
         GlRenderer2d.invalidateCaches renderer
         match Path.GetExtension(asset.FilePath).ToLowerInvariant() with
         | ".bmp" | ".png" | ".jpg" | ".jpeg" | ".tga" | ".tif" | ".tiff" ->
-            match OpenGL.Texture.TryCreateTextureUnfiltered (Constants.OpenGl.UncompressedTextureFormat, asset.FilePath) with
+            match OpenGL.Texture.TryCreateTextureUnfilteredMemoized (Constants.OpenGl.UncompressedTextureFormat, asset.FilePath, packageState.TextureMemo) with
             | Right (textureMetadata, texture) ->
                 Some (TextureAsset (textureMetadata, texture))
             | Left error ->
-                Log.debug ("Could not load texture '" + asset.FilePath + "' due to '" + error + "'.")
+                Log.infoOnce ("Could not load texture '" + asset.FilePath + "' due to '" + error + "'.")
                 None
         | ".ttf" ->
             let fileFirstName = Path.GetFileNameWithoutExtension asset.FilePath
@@ -197,26 +203,37 @@ type [<ReferenceEquality>] GlRenderer2d =
                     match Dictionary.tryFind packageName renderer.RenderPackages with
                     | Some renderPackage -> renderPackage
                     | None ->
-                        let renderPackage = { Assets = dictPlus StringComparer.Ordinal []; PackageState = () }
+                        let renderPackageState = { TextureMemo = OpenGL.Texture.TextureMemo.make (); CubeMapMemo = OpenGL.CubeMap.CubeMapMemo.make (); AssimpSceneMemo = OpenGL.Assimp.AssimpSceneMemo.make () }
+                        let renderPackage = { Assets = dictPlus StringComparer.Ordinal []; PackageState = renderPackageState }
                         renderer.RenderPackages.[packageName] <- renderPackage
                         renderPackage
 
-                // reload assets if specified
+                // free assets if specified
                 if reloading then
+
+                    // clear package
+                    renderPackage.Assets.Clear ()
+
+                    // clear memos
+                    renderPackage.PackageState.TextureMemo.Textures.Clear ()
+                    renderPackage.PackageState.CubeMapMemo.CubeMaps.Clear ()
+                    renderPackage.PackageState.AssimpSceneMemo.AssimpScenes.Clear ()
+
+                    // free assets
                     for asset in assets do
                         match renderPackage.Assets.TryGetValue asset.AssetTag.AssetName with
                         | (true, (_, renderAsset)) -> GlRenderer2d.freeRenderAsset renderAsset renderer
                         | (false, _) -> ()
-                        match GlRenderer2d.tryLoadRenderAsset asset renderer with
-                        | Some renderAsset -> renderPackage.Assets.[asset.AssetTag.AssetName] <- (asset.FilePath, renderAsset)
-                        | None -> ()
 
-                // otherwise create assets
-                else
-                    for asset in assets do
-                        match GlRenderer2d.tryLoadRenderAsset asset renderer with
-                        | Some renderAsset -> renderPackage.Assets.[asset.AssetTag.AssetName] <- (asset.FilePath, renderAsset)
-                        | None -> ()
+                // memoize assets in parallel
+                AssetMemo.memoizeParallel
+                    true assets renderPackage.PackageState.TextureMemo renderPackage.PackageState.CubeMapMemo renderPackage.PackageState.AssimpSceneMemo
+
+                // load assets
+                for asset in assets do
+                    match GlRenderer2d.tryLoadRenderAsset renderPackage.PackageState asset renderer with
+                    | Some renderAsset -> renderPackage.Assets.[asset.AssetTag.AssetName] <- (asset.FilePath, renderAsset)
+                    | None -> ()
 
             // handle error cases
             | Left failedAssetNames ->

@@ -121,14 +121,14 @@ type [<ReferenceEquality>] SdlAudioPlayer =
             if wavOpt <> IntPtr.Zero then Some (WavAsset wavOpt)
             else
                 let errorMsg = SDL.SDL_GetError ()
-                Log.debug ("Could not load wav '" + asset.FilePath + "' due to '" + errorMsg + "'.")
+                Log.info ("Could not load wav '" + asset.FilePath + "' due to '" + errorMsg + "'.")
                 None
         | ".ogg" ->
             let oggOpt = SDL_mixer.Mix_LoadMUS asset.FilePath
             if oggOpt <> IntPtr.Zero then Some (OggAsset oggOpt)
             else
                 let errorMsg = SDL.SDL_GetError ()
-                Log.debug ("Could not load ogg '" + asset.FilePath + "' due to '" + errorMsg + "'.")
+                Log.info ("Could not load ogg '" + asset.FilePath + "' due to '" + errorMsg + "'.")
                 None
         | _ -> None
 
@@ -196,10 +196,10 @@ type [<ReferenceEquality>] SdlAudioPlayer =
                 //    else 0.0
                 SDL_mixer.Mix_HaltMusic () |> ignore // NOTE: have to stop current song in case it is still fading out, causing the next song not to play.
                 SDL_mixer.Mix_VolumeMusic (int (playSongMessage.Volume * audioPlayer.MasterAudioVolume * audioPlayer.MasterSongVolume * single SDL_mixer.MIX_MAX_VOLUME)) |> ignore
-                match SDL_mixer.Mix_FadeInMusicPos (oggAsset, -1, int (max Constants.Audio.FadeInSecondsMinimum playSongMessage.FadeInTime.Seconds * 1000.0f), double playSongMessage.StartTime.Seconds) with
+                match SDL_mixer.Mix_FadeInMusicPos (oggAsset, -1, int (max Constants.Audio.FadeInSecondsMin playSongMessage.FadeInTime.Seconds * 1000.0f), double playSongMessage.StartTime.Seconds) with
                 | -1 ->
                     // HACK: start time exceeded length of track, so starting over.
-                    SDL_mixer.Mix_FadeInMusicPos (oggAsset, -1, int (max Constants.Audio.FadeInSecondsMinimum playSongMessage.FadeInTime.Seconds * 1000.0f), 0.0) |> ignore
+                    SDL_mixer.Mix_FadeInMusicPos (oggAsset, -1, int (max Constants.Audio.FadeInSecondsMin playSongMessage.FadeInTime.Seconds * 1000.0f), 0.0) |> ignore
                 | _ -> ()
                 audioPlayer.CurrentSongOpt <- Some (playSongMessage, oggAsset)
         | None ->
