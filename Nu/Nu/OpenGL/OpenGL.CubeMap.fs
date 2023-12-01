@@ -20,18 +20,17 @@ module CubeMap =
 
     /// Memoizes cube map loads.
     type [<ReferenceEquality>] CubeMapMemo =
-        private
-            { CubeMaps : Dictionary<CubeMapMemoKey, uint> }
+        { CubeMaps : Dictionary<CubeMapMemoKey, uint> }
 
         /// Make a cube map memoizer.
         static member make () =
             { CubeMaps = Dictionary HashIdentity.Structural }
 
     /// Attempt to create a cube map from 6 files.
-    let private TryCreateCubeMapInternal (cubeMapOpt, faceRightFilePath, faceLeftFilePath, faceTopFilePath, faceBottomFilePath, faceBackFilePath, faceFrontFilePath) =
+    let TryCreateCubeMap (faceRightFilePath, faceLeftFilePath, faceTopFilePath, faceBottomFilePath, faceBackFilePath, faceFrontFilePath) =
 
         // bind new cube map
-        let cubeMap = match cubeMapOpt with Some cubeMap -> cubeMap | None -> Gl.GenTexture ()
+        let cubeMap = Gl.GenTexture ()
         Gl.BindTexture (TextureTarget.TextureCubeMap, cubeMap)
         Hl.Assert ()
 
@@ -41,10 +40,10 @@ module CubeMap =
         for i in 0 .. dec faceFilePaths.Length do
             if Option.isNone errorOpt then
                 let faceFilePath = faceFilePaths.[i]
-                match Texture.TryCreateImageData (Constants.OpenGl.UncompressedTextureFormat, false, faceFilePath) with
-                | Some (metadata, imageData, disposer) ->
+                match Texture.TryCreateTextureData (Constants.OpenGl.UncompressedTextureFormat, false, faceFilePath) with
+                | Some (metadata, textureData, disposer) ->
                     use _ = disposer
-                    Gl.TexImage2D (LanguagePrimitives.EnumOfValue (int TextureTarget.TextureCubeMapPositiveX + i), 0, Constants.OpenGl.UncompressedTextureFormat, metadata.TextureWidth, metadata.TextureHeight, 0, PixelFormat.Bgra, PixelType.UnsignedByte, imageData)
+                    Gl.TexImage2D (LanguagePrimitives.EnumOfValue (int TextureTarget.TextureCubeMapPositiveX + i), 0, Constants.OpenGl.UncompressedTextureFormat, metadata.TextureWidth, metadata.TextureHeight, 0, PixelFormat.Bgra, PixelType.UnsignedByte, textureData)
                     Hl.Assert ()
                 | None -> errorOpt <- Some ("Could not create surface for image from '" + faceFilePath + "'")
 
@@ -62,56 +61,22 @@ module CubeMap =
             Left error
 
     /// Attempt to create a cube map from 6 files.
-    let TryCreateCubeMap (faceRightFilePath, faceLeftFilePath, faceTopFilePath, faceBottomFilePath, faceBackFilePath, faceFrontFilePath) =
-        TryCreateCubeMapInternal (None, faceRightFilePath, faceLeftFilePath, faceTopFilePath, faceBottomFilePath, faceBackFilePath, faceFrontFilePath)
-
-    /// Attempt to create a cube map from 6 files.
     let TryCreateCubeMapMemoized (cubeMapMemoKey, cubeMapMemo) =
 
-        // deconstruct key
-        let (faceRightFilePath, faceLeftFilePath, faceTopFilePath, faceBottomFilePath, faceBackFilePath, faceFrontFilePath) = cubeMapMemoKey
-
         // memoize cube map
-        let cubeMapKey =
-            (Path.GetFullPath faceRightFilePath,
-             Path.GetFullPath faceLeftFilePath,
-             Path.GetFullPath faceTopFilePath,
-             Path.GetFullPath faceBottomFilePath,
-             Path.GetFullPath faceBackFilePath,
-             Path.GetFullPath faceFrontFilePath)
-        match cubeMapMemo.CubeMaps.TryGetValue cubeMapKey with
+        match cubeMapMemo.CubeMaps.TryGetValue cubeMapMemoKey with
         | (false, _) ->
 
             // attempt to create cube map
+            let (faceRightFilePath, faceLeftFilePath, faceTopFilePath, faceBottomFilePath, faceBackFilePath, faceFrontFilePath) = cubeMapMemoKey
             match TryCreateCubeMap (faceRightFilePath, faceLeftFilePath, faceTopFilePath, faceBottomFilePath, faceBackFilePath, faceFrontFilePath) with
             | Right cubeMap ->
-                cubeMapMemo.CubeMaps.Add (cubeMapKey, cubeMap)
+                cubeMapMemo.CubeMaps.Add (cubeMapMemoKey, cubeMap)
                 Right cubeMap
             | Left error -> Left error
 
         // already exists
         | (true, cubeMap) -> Right cubeMap
-
-    /// Recreate the memoized cube maps.
-    let RecreateCubeMapsMemoized cubeMapMemo =
-        for entry in cubeMapMemo.CubeMaps do
-            let (f0, f1, f2, f3, f4, f5) = entry.Key
-            let cubeMap = entry.Value
-            TryCreateCubeMapInternal (Some cubeMap, f0, f1, f2, f3, f4, f5) |> ignore
-
-    /// Delete a memoized cube map.
-    let DeleteCubeMapMemoized cubeMapKey (cubeMapMemo : CubeMapMemo) =
-        match cubeMapMemo.CubeMaps.TryGetValue cubeMapKey with
-        | (true, cubeMap) ->
-            Gl.DeleteTextures [|cubeMap|]
-            cubeMapMemo.CubeMaps.Remove cubeMapKey |> ignore<bool>
-        | (false, _) -> ()
-
-    /// Delete memoized cube maps.
-    let DeleteCubeMapsMemoized (cubeMapMemo) =
-        for entry in cubeMapMemo.CubeMaps do
-            Gl.DeleteTextures [|entry.Value|]
-        cubeMapMemo.CubeMaps.Clear ()
 
     /// Describes some cube map geometry that's loaded into VRAM.
     type CubeMapGeometry =

@@ -3,7 +3,6 @@
 
 namespace Nu
 open System
-open System.Diagnostics
 open System.IO
 open TiledSharp
 open Prime
@@ -25,24 +24,16 @@ type Metadata =
 [<RequireQualifiedAccess>]
 module Metadata =
 
-    (* Performance Timers *)
-    let private RawTimer = Stopwatch ()
-    let private TextureTimer = Stopwatch ()
-    let private TmxTimer = Stopwatch ()
-    let private FbxTimer = Stopwatch ()
-    let private DaeTimer = Stopwatch ()
-    let private ObjTimer = Stopwatch ()
-    let private WavTimer = Stopwatch ()
-    let private OggTimer = Stopwatch ()
-
     let mutable private MetadataPackages :
         UMap<string, UMap<string, string * Metadata>> = UMap.makeEmpty StringComparer.Ordinal Imperative
 
+    /// Thread-safe.
     let private tryGenerateRawMetadata asset =
         if File.Exists asset.FilePath
         then Some RawMetadata
         else None
 
+    /// Thread-safe.
     let private tryGenerateTextureMetadata asset =
         if File.Exists asset.FilePath then
             let platform = Environment.OSVersion.Platform
@@ -55,7 +46,7 @@ module Metadata =
                 Some (TextureMetadata (v2i image.Width image.Height))
             else
                 // NOTE: System.Drawing.Image is not, AFAIK, available on non-Windows platforms, so we use a VERY slow path here.
-                match OpenGL.Texture.TryCreateImageData (Unchecked.defaultof<OpenGL.InternalFormat>, false, asset.FilePath) with
+                match OpenGL.Texture.TryCreateTextureData (Unchecked.defaultof<OpenGL.InternalFormat>, false, asset.FilePath) with
                 | Some (metadata, _, disposer) ->
                     use _ = disposer
                     Some (TextureMetadata (v2i metadata.TextureWidth metadata.TextureHeight))
@@ -68,6 +59,7 @@ module Metadata =
             Log.trace errorMessage
             None
 
+    /// Thread-safe.
     let private tryGenerateTileMapMetadata asset =
         try let tmxMap = TmxMap (asset.FilePath, true)
             let imageAssets = tmxMap.GetImageAssets asset.AssetTag.PackageName
@@ -77,13 +69,14 @@ module Metadata =
             Log.trace errorMessage
             None
 
+    /// Thread-safe.
     let private tryGenerateModelMetadata asset =
         if File.Exists asset.FilePath then
             let textureMemo = OpenGL.Texture.TextureMemo.make () // unused
-            use assimp = new Assimp.AssimpContext ()
-            match OpenGL.PhysicallyBased.TryCreatePhysicallyBasedModel (false, asset.FilePath, Unchecked.defaultof<_>, textureMemo, assimp) with
+            let assimpSceneMemo = OpenGL.Assimp.AssimpSceneMemo.make () // unused
+            match OpenGL.PhysicallyBased.TryCreatePhysicallyBasedModel (false, asset.FilePath, Unchecked.defaultof<_>, textureMemo, assimpSceneMemo) with
             | Right model ->
-                if model.AnimatedSceneOpt.IsSome
+                if model.Animated
                 then Some (AnimatedModelMetadata model)
                 else Some (StaticModelMetadata model)
             | Left error ->
@@ -95,50 +88,17 @@ module Metadata =
             Log.trace errorMessage
             None
 
+    /// Thread-safe.
     let private tryGenerateAssetMetadata asset =
         let extension = Path.GetExtension(asset.FilePath).ToLowerInvariant()
         let metadataOpt =
             match extension with
-            | ".raw" ->
-                RawTimer.Start ()
-                let metadataOpt = tryGenerateRawMetadata asset
-                RawTimer.Stop ()
-                metadataOpt
-            | ".bmp" | ".png" | ".jpg" | ".jpeg" | ".tga" | ".tif" | ".tiff" ->
-                TextureTimer.Start ()
-                let metadataOpt = tryGenerateTextureMetadata asset
-                TextureTimer.Stop ()
-                metadataOpt
-            | ".tmx" ->
-                TmxTimer.Start ()
-                let metadataOpt = tryGenerateTileMapMetadata asset
-                TmxTimer.Stop ()
-                metadataOpt
-            | ".fbx" ->
-                FbxTimer.Start ()
-                let metadataOpt = tryGenerateModelMetadata asset
-                FbxTimer.Stop ()
-                metadataOpt
-            | ".dae" ->
-                DaeTimer.Start ()
-                let metadataOpt = tryGenerateModelMetadata asset
-                DaeTimer.Stop ()
-                metadataOpt
-            | ".obj" ->
-                ObjTimer.Start ()
-                let metadataOpt = tryGenerateModelMetadata asset
-                ObjTimer.Stop ()
-                metadataOpt
-            | ".wav" ->
-                WavTimer.Start ()
-                let metadataOpt = Some SoundMetadata
-                WavTimer.Stop ()
-                metadataOpt
-            | ".ogg" ->
-                OggTimer.Start ()
-                let metadataOpt = Some SongMetadata
-                OggTimer.Stop ()
-                metadataOpt
+            | ".raw" -> tryGenerateRawMetadata asset
+            | ".bmp" | ".png" | ".jpg" | ".jpeg" | ".tga" | ".tif" | ".tiff" -> tryGenerateTextureMetadata asset
+            | ".tmx" -> tryGenerateTileMapMetadata asset
+            | ".fbx" | ".dae" | ".obj" -> tryGenerateModelMetadata asset
+            | ".wav" -> Some SoundMetadata
+            | ".ogg" -> Some SongMetadata
             | _ -> None
         match metadataOpt with
         | Some metadata -> Some (asset.AssetTag.AssetName, (asset.FilePath, metadata))
@@ -147,7 +107,13 @@ module Metadata =
     let private tryGenerateMetadataPackage config packageName assetGraph =
         match AssetGraph.tryCollectAssetsFromPackage None packageName assetGraph with
         | Right assets ->
-            let package = assets |> List.map tryGenerateAssetMetadata |> List.definitize |> UMap.makeFromSeq HashIdentity.Structural config
+            let package =
+                assets |>
+                List.map (fun asset -> vsync { return tryGenerateAssetMetadata asset }) |>
+                Vsync.Parallel |>
+                Vsync.RunSynchronously |>
+                Array.definitize |>
+                UMap.makeFromSeq HashIdentity.Structural config
             (packageName, package)
         | Left error ->
             Log.info ("Could not load asset metadata for package '" + packageName + "' due to: " + error)

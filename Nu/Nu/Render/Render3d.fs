@@ -535,7 +535,8 @@ type [<ReferenceEquality>] StubRenderer3d =
 /// The internally used package state for the 3d OpenGL renderer.
 type [<ReferenceEquality>] private GlPackageState3d =
     { TextureMemo : OpenGL.Texture.TextureMemo
-      CubeMapMemo : OpenGL.CubeMap.CubeMapMemo }
+      CubeMapMemo : OpenGL.CubeMap.CubeMapMemo
+      AssimpSceneMemo : OpenGL.Assimp.AssimpSceneMemo }
 
 /// The OpenGL implementation of Renderer3d.
 type [<ReferenceEquality>] GlRenderer3d =
@@ -593,35 +594,9 @@ type [<ReferenceEquality>] GlRenderer3d =
         renderer.RenderPackageCachedOpt <- Unchecked.defaultof<_>
         renderer.RenderAssetCachedOpt <- Unchecked.defaultof<_>
 
-    static member private freeRenderAsset packageState filePath renderAsset renderer =
-        GlRenderer3d.invalidateCaches renderer
-        match renderAsset with
-        | RawAsset _ ->
-            () // nothing to do
-        | TextureAsset (_, _) ->
-            OpenGL.Texture.DeleteTextureMemoized filePath packageState.TextureMemo
-            OpenGL.Hl.Assert ()
-        | FontAsset (_, font) ->
-            SDL_ttf.TTF_CloseFont font
-        | CubeMapAsset (cubeMapFilePaths, _, _) ->
-            OpenGL.CubeMap.DeleteCubeMapMemoized cubeMapFilePaths packageState.CubeMapMemo
-            OpenGL.Hl.Assert ()
-        | StaticModelAsset (_, model) ->
-            OpenGL.PhysicallyBased.DestroyPhysicallyBasedModel model
-            OpenGL.Hl.Assert ()
-        | AnimatedModelAsset model ->
-            OpenGL.PhysicallyBased.DestroyPhysicallyBasedModel model
-            OpenGL.Hl.Assert ()
-
     static member private tryLoadTextureAsset packageState (asset : obj Asset) renderer =
         GlRenderer3d.invalidateCaches renderer
-        let internalFormat =
-            if  asset.AssetTag.AssetName.EndsWith "_n" ||
-                asset.AssetTag.AssetName.EndsWith "_u" ||
-                asset.AssetTag.AssetName.EndsWith "Normal" ||
-                asset.AssetTag.AssetName.EndsWith "Uncompressed" then
-                Constants.OpenGl.UncompressedTextureFormat
-            else Constants.OpenGl.CompressedColorTextureFormat
+        let internalFormat = AssetTag.inferInternalFormatFromAssetName asset.AssetTag
         match OpenGL.Texture.TryCreateTextureFilteredMemoized (internalFormat, asset.FilePath, packageState.TextureMemo) with
         | Right (textureMetadata, texture) ->
             Some (textureMetadata, texture)
@@ -633,13 +608,13 @@ type [<ReferenceEquality>] GlRenderer3d =
         GlRenderer3d.invalidateCaches renderer
         match File.ReadAllLines asset.FilePath |> Array.filter (String.IsNullOrWhiteSpace >> not) with
         | [|faceRightFilePath; faceLeftFilePath; faceTopFilePath; faceBottomFilePath; faceBackFilePath; faceFrontFilePath|] ->
-            let dirPath = Path.GetDirectoryName asset.FilePath
-            let faceRightFilePath = dirPath + "/" + faceRightFilePath |> fun str -> str.Trim ()
-            let faceLeftFilePath = dirPath + "/" + faceLeftFilePath |> fun str -> str.Trim ()
-            let faceTopFilePath = dirPath + "/" + faceTopFilePath |> fun str -> str.Trim ()
-            let faceBottomFilePath = dirPath + "/" + faceBottomFilePath |> fun str -> str.Trim ()
-            let faceBackFilePath = dirPath + "/" + faceBackFilePath |> fun str -> str.Trim ()
-            let faceFrontFilePath = dirPath + "/" + faceFrontFilePath |> fun str -> str.Trim ()
+            let dirPath = Path.GetDirectoryName(asset.FilePath).Replace("\\", "/")
+            let faceRightFilePath = dirPath + "/" + faceRightFilePath.Trim ()
+            let faceLeftFilePath = dirPath + "/" + faceLeftFilePath.Trim ()
+            let faceTopFilePath = dirPath + "/" + faceTopFilePath.Trim ()
+            let faceBottomFilePath = dirPath + "/" + faceBottomFilePath.Trim ()
+            let faceBackFilePath = dirPath + "/" + faceBackFilePath.Trim ()
+            let faceFrontFilePath = dirPath + "/" + faceFrontFilePath.Trim ()
             let cubeMapMemoKey = (faceRightFilePath, faceLeftFilePath, faceTopFilePath, faceBottomFilePath, faceBackFilePath, faceFrontFilePath)
             match OpenGL.CubeMap.TryCreateCubeMapMemoized (cubeMapMemoKey, packageState.CubeMapMemo) with
             | Right cubeMap -> Some (cubeMapMemoKey, cubeMap, ref None)
@@ -648,8 +623,7 @@ type [<ReferenceEquality>] GlRenderer3d =
 
     static member private tryLoadModelAsset packageState (asset : obj Asset) renderer =
         GlRenderer3d.invalidateCaches renderer
-        use assimp = new Assimp.AssimpContext ()
-        match OpenGL.PhysicallyBased.TryCreatePhysicallyBasedModel (true, asset.FilePath, renderer.RenderPhysicallyBasedMaterial, packageState.TextureMemo, assimp) with
+        match OpenGL.PhysicallyBased.TryCreatePhysicallyBasedModel (true, asset.FilePath, renderer.RenderPhysicallyBasedMaterial, packageState.TextureMemo, packageState.AssimpSceneMemo) with
         | Right model -> Some model
         | Left error -> Log.info ("Could not load model '" + asset.FilePath + "' due to: " + error); None
 
@@ -677,11 +651,31 @@ type [<ReferenceEquality>] GlRenderer3d =
         | ".fbx" | ".dae" | ".obj" ->
             match GlRenderer3d.tryLoadModelAsset packageState asset renderer with
             | Some model ->
-                if model.AnimatedSceneOpt.IsSome
+                if model.Animated
                 then Some (AnimatedModelAsset model)
                 else Some (StaticModelAsset (false, model))
             | None -> None
         | _ -> None
+
+    static member private freeRenderAsset renderAsset renderer =
+        GlRenderer3d.invalidateCaches renderer
+        match renderAsset with
+        | RawAsset _ ->
+            () // nothing to do
+        | TextureAsset (_, texture) ->
+            OpenGL.Gl.DeleteTextures texture
+            OpenGL.Hl.Assert ()
+        | FontAsset (_, font) ->
+            SDL_ttf.TTF_CloseFont font
+        | CubeMapAsset (_, cubeMap, _) ->
+            OpenGL.Gl.DeleteTextures cubeMap
+            OpenGL.Hl.Assert ()
+        | StaticModelAsset (_, model) ->
+            OpenGL.PhysicallyBased.DestroyPhysicallyBasedModel model
+            OpenGL.Hl.Assert ()
+        | AnimatedModelAsset model ->
+            OpenGL.PhysicallyBased.DestroyPhysicallyBasedModel model
+            OpenGL.Hl.Assert ()
 
     static member private tryLoadRenderPackage reloading packageName renderer =
         match AssetGraph.tryMakeFromFile Assets.Global.AssetGraphFilePath with
@@ -694,53 +688,37 @@ type [<ReferenceEquality>] GlRenderer3d =
                     match Dictionary.tryFind packageName renderer.RenderPackages with
                     | Some renderPackage -> renderPackage
                     | None ->
-                        let renderPackageState = { TextureMemo = OpenGL.Texture.TextureMemo.make (); CubeMapMemo = OpenGL.CubeMap.CubeMapMemo.make () }
+                        let renderPackageState = { TextureMemo = OpenGL.Texture.TextureMemo.make (); CubeMapMemo = OpenGL.CubeMap.CubeMapMemo.make (); AssimpSceneMemo = OpenGL.Assimp.AssimpSceneMemo.make () }
                         let renderPackage = { Assets = dictPlus StringComparer.Ordinal []; PackageState = renderPackageState }
                         renderer.RenderPackages.[packageName] <- renderPackage
                         renderPackage
 
-                // reload assets if specified
+                // free assets if specified
                 if reloading then
-                    OpenGL.Texture.RecreateTexturesMemoized renderPackage.PackageState.TextureMemo
-                    OpenGL.Hl.Assert ()
-                    OpenGL.CubeMap.RecreateCubeMapsMemoized renderPackage.PackageState.CubeMapMemo
-                    OpenGL.Hl.Assert ()
+
+                    // clear package
+                    renderPackage.Assets.Clear ()
+
+                    // clear memos
+                    renderPackage.PackageState.TextureMemo.Textures.Clear ()
+                    renderPackage.PackageState.CubeMapMemo.CubeMaps.Clear ()
+                    renderPackage.PackageState.AssimpSceneMemo.AssimpScenes.Clear ()
+
+                    // free assets
                     for asset in assets do
                         match renderPackage.Assets.TryGetValue asset.AssetTag.AssetName with
-                        | (true, (_, renderAsset)) ->
-                            match renderAsset with
-                            | RawAsset _ -> ()
-                            | TextureAsset _ -> () // already reloaded via texture memo
-                            | FontAsset _ -> () // not yet used in 3d renderer
-                            | CubeMapAsset _ -> () // already reloaded via cube map memo
-                            | StaticModelAsset (userDefined, model) ->
-                                match Path.GetExtension(asset.FilePath).ToLowerInvariant() with
-                                | ".fbx" | ".dae" | ".obj" ->
-                                    renderPackage.Assets.Remove asset.AssetTag.AssetName |> ignore<bool>
-                                    OpenGL.PhysicallyBased.DestroyPhysicallyBasedModel model
-                                    OpenGL.Hl.Assert ()
-                                    match GlRenderer3d.tryLoadModelAsset renderPackage.PackageState asset renderer with
-                                    | Some model -> renderPackage.Assets.Add (asset.AssetTag.AssetName, (asset.FilePath, StaticModelAsset (userDefined, model)))
-                                    | None -> ()
-                                | _ -> ()
-                            | AnimatedModelAsset model ->
-                                match Path.GetExtension(asset.FilePath).ToLowerInvariant() with
-                                | ".fbx" | ".dae" | ".obj" ->
-                                    renderPackage.Assets.Remove asset.AssetTag.AssetName |> ignore<bool>
-                                    OpenGL.PhysicallyBased.DestroyPhysicallyBasedModel model
-                                    OpenGL.Hl.Assert ()
-                                    match GlRenderer3d.tryLoadModelAsset renderPackage.PackageState asset renderer with
-                                    | Some model -> renderPackage.Assets.Add (asset.AssetTag.AssetName, (asset.FilePath, AnimatedModelAsset model))
-                                    | None -> ()
-                                | _ -> ()
+                        | (true, (_, renderAsset)) -> GlRenderer3d.freeRenderAsset renderAsset renderer
                         | (false, _) -> ()
 
-                // otherwise create assets
-                else
-                    for asset in assets do
-                        match GlRenderer3d.tryLoadRenderAsset renderPackage.PackageState asset renderer with
-                        | Some renderAsset -> renderPackage.Assets.[asset.AssetTag.AssetName] <- (asset.FilePath, renderAsset)
-                        | None -> ()
+                // memoize assets in parallel
+                AssetMemo.memoizeParallel
+                    false assets renderPackage.PackageState.TextureMemo renderPackage.PackageState.CubeMapMemo renderPackage.PackageState.AssimpSceneMemo
+
+                // load assets
+                for asset in assets do
+                    match GlRenderer3d.tryLoadRenderAsset renderPackage.PackageState asset renderer with
+                    | Some renderAsset -> renderPackage.Assets.[asset.AssetTag.AssetName] <- (asset.FilePath, renderAsset)
+                    | None -> ()
 
             | Left failedAssetNames ->
                 Log.info ("Render package load failed due to unloadable assets '" + failedAssetNames + "' for package '" + packageName + "'.")
@@ -793,14 +771,14 @@ type [<ReferenceEquality>] GlRenderer3d =
                     | (false, _) -> ValueNone
                 | (false, _) -> ValueNone
 
-    static member private tryGetImageData (assetTag : Image AssetTag) renderer =
+    static member private tryGetTextureData (assetTag : Image AssetTag) renderer =
         match GlRenderer3d.tryGetFilePath (AssetTag.generalize assetTag) renderer with
         | Some filePath ->
-            match OpenGL.Texture.TryCreateImageData (Constants.OpenGl.UncompressedTextureFormat, false, filePath) with
-            | Some (metadata, imageDataPtr, disposer) ->
+            match OpenGL.Texture.TryCreateTextureData (Constants.OpenGl.UncompressedTextureFormat, false, filePath) with
+            | Some (metadata, textureDataPtr, disposer) ->
                 use _ = disposer
                 let bytes = Array.zeroCreate<byte> (metadata.TextureWidth * metadata.TextureHeight * sizeof<uint>)
-                Marshal.Copy (imageDataPtr, bytes, 0, bytes.Length)
+                Marshal.Copy (textureDataPtr, bytes, 0, bytes.Length)
                 Some (metadata, bytes)
             | None -> None
         | None -> None
@@ -826,9 +804,9 @@ type [<ReferenceEquality>] GlRenderer3d =
         match renderer.RenderPackages.TryGetValue assetTag.PackageName with
         | (true, package) ->
             match package.Assets.TryGetValue assetTag.AssetName with
-            | (true, (filePath, asset)) ->
+            | (true, (_, asset)) ->
                 match asset with
-                | StaticModelAsset (userDefined, _) when userDefined -> GlRenderer3d.freeRenderAsset package.PackageState filePath asset renderer
+                | StaticModelAsset (userDefined, _) when userDefined -> GlRenderer3d.freeRenderAsset asset renderer
                 | _ -> ()
             | (false, _) -> ()
         | (false, _) -> ()
@@ -920,11 +898,12 @@ type [<ReferenceEquality>] GlRenderer3d =
             let surfaces = Seq.toArray surfaces
             let hierarchy = TreeNode (Array.map OpenGL.PhysicallyBased.PhysicallyBasedSurface surfaces)
             let model : OpenGL.PhysicallyBased.PhysicallyBasedModel =
-                { Bounds = bounds
+                { Animated = false
+                  Bounds = bounds
                   LightProbes = [||]
                   Lights = [||]
                   Surfaces = surfaces
-                  AnimatedSceneOpt = None
+                  SceneOpt = None
                   PhysicallyBasedHierarchy = hierarchy }
 
             // assign model as appropriate render package asset
@@ -932,7 +911,7 @@ type [<ReferenceEquality>] GlRenderer3d =
             | (true, package) ->
                 package.Assets.[assetTag.AssetName] <- ("", StaticModelAsset (true, model))
             | (false, _) ->
-                let packageState = { TextureMemo = OpenGL.Texture.TextureMemo.make (); CubeMapMemo = OpenGL.CubeMap.CubeMapMemo.make () }
+                let packageState = { TextureMemo = OpenGL.Texture.TextureMemo.make (); CubeMapMemo = OpenGL.CubeMap.CubeMapMemo.make (); AssimpSceneMemo = OpenGL.Assimp.AssimpSceneMemo.make () }
                 let package = { Assets = Dictionary.singleton StringComparer.Ordinal assetTag.AssetName ("", StaticModelAsset (true, model)); PackageState = packageState }
                 renderer.RenderPackages.[assetTag.PackageName] <- package
 
@@ -950,15 +929,13 @@ type [<ReferenceEquality>] GlRenderer3d =
                     let s  = fst' positionsAndTexCoordses.[resolution.X * inc y + x]
                     let sw = fst' positionsAndTexCoordses.[resolution.X * inc y + dec x]
                     let w  = fst' positionsAndTexCoordses.[resolution.X * y + dec x]
-                    
                     let normalSum =
                         Vector3.Cross (ne - v, n - v) +
-                        Vector3.Cross (e - v, ne - v) +
-                        Vector3.Cross (s - v, e - v) +
+                        Vector3.Cross (e - v,  ne - v) +
+                        Vector3.Cross (s - v,  e - v) +
                         Vector3.Cross (sw - v, s - v) +
-                        Vector3.Cross (w - v, sw - v) +
-                        Vector3.Cross (n - v, w - v)
-                    
+                        Vector3.Cross (w - v,  sw - v) +
+                        Vector3.Cross (n - v,  w - v)
                     let normal = normalSum |> Vector3.Normalize
                     normal
                 else v3Up|]
@@ -983,7 +960,7 @@ type [<ReferenceEquality>] GlRenderer3d =
             let normals =
                 match geometryDescriptor.NormalImageOpt with
                 | Some normalImage ->
-                    match GlRenderer3d.tryGetImageData normalImage renderer with
+                    match GlRenderer3d.tryGetTextureData normalImage renderer with
                     | Some (metadata, bytes) when metadata.TextureWidth * metadata.TextureHeight = positionsAndTexCoordses.Length ->
                         bytes |>
                         Array.map (fun x -> single x / single Byte.MaxValue) |>
@@ -997,7 +974,7 @@ type [<ReferenceEquality>] GlRenderer3d =
 
             // compute tint
             let tint =
-                match GlRenderer3d.tryGetImageData geometryDescriptor.TintImage renderer with
+                match GlRenderer3d.tryGetTextureData geometryDescriptor.TintImage renderer with
                 | Some (metadata, bytes) when metadata.TextureWidth * metadata.TextureHeight = positionsAndTexCoordses.Length ->
                     bytes |>
                     Array.map (fun x -> single x / single Byte.MaxValue) |>
@@ -1016,7 +993,7 @@ type [<ReferenceEquality>] GlRenderer3d =
                          " which references more than the guaranteed number of supported fragment shader textures.")
                 match blendMaterial.BlendMap with
                 | RgbaMap rgbaMap ->
-                    match GlRenderer3d.tryGetImageData rgbaMap renderer with
+                    match GlRenderer3d.tryGetTextureData rgbaMap renderer with
                     | Some (metadata, bytes) when metadata.TextureWidth * metadata.TextureHeight = positionsAndTexCoordses.Length ->
                         for i in 0 .. dec positionsAndTexCoordses.Length do
                             // ARGB reverse byte order, from Drawing.Bitmap (windows).
@@ -1025,15 +1002,15 @@ type [<ReferenceEquality>] GlRenderer3d =
                             blendses.[i,1] <- single bytes.[i * 4 + 1] / single Byte.MaxValue
                             blendses.[i,2] <- single bytes.[i * 4 + 0] / single Byte.MaxValue
                             blendses.[i,3] <- single bytes.[i * 4 + 3] / single Byte.MaxValue
-                    | _ -> Log.info ("Could not locate image data for blend map '" + scstring rgbaMap + "'.")
+                    | _ -> Log.info ("Could not locate texture data for blend map '" + scstring rgbaMap + "'.")
                 | RedsMap reds ->
                     for i in 0 .. dec (min reds.Length Constants.Render.TerrainLayersMax) do
                         let red = reds.[i]
-                        match GlRenderer3d.tryGetImageData red renderer with
+                        match GlRenderer3d.tryGetTextureData red renderer with
                         | Some (metadata, bytes) when metadata.TextureWidth * metadata.TextureHeight = positionsAndTexCoordses.Length ->
                             for j in 0 .. dec positionsAndTexCoordses.Length do
                                 blendses.[j,i] <- single bytes.[j * 4 + 2] / single Byte.MaxValue
-                        | _ -> Log.info ("Could not locate image data for blend map '" + scstring red + "'.")
+                        | _ -> Log.info ("Could not locate texture data for blend map '" + scstring red + "'.")
             | FlatMaterial _ ->
                 for i in 0 .. dec positionsAndTexCoordses.Length do
                     blendses.[i,0] <- 1.0f
@@ -1077,8 +1054,7 @@ type [<ReferenceEquality>] GlRenderer3d =
         GlRenderer3d.invalidateCaches renderer
         match Dictionary.tryFind hintPackageName renderer.RenderPackages with
         | Some package ->
-            OpenGL.Texture.DeleteTexturesMemoized package.PackageState.TextureMemo
-            OpenGL.CubeMap.DeleteCubeMapsMemoized package.PackageState.CubeMapMemo
+            for (_, asset) in package.Assets.Values do GlRenderer3d.freeRenderAsset asset renderer
             renderer.RenderPackages.Remove hintPackageName |> ignore
         | None -> ()
 
@@ -1254,7 +1230,7 @@ type [<ReferenceEquality>] GlRenderer3d =
 
                 // render animated surfaces
                 for surface in modelAsset.Surfaces do
-                    match modelAsset.AnimatedSceneOpt with
+                    match modelAsset.SceneOpt with
                     | Some scene ->
 
                         // compute tex coords offset
@@ -1288,7 +1264,7 @@ type [<ReferenceEquality>] GlRenderer3d =
                                 else renderer.RenderTasks.RenderSurfacesDeferredAnimatedRelative.Add (struct (time, animations, surface), struct (bones, SList.singleton struct (modelMatrix, texCoordsOffset, properties)))
 
                     // unable to render
-                    | Some _ | None -> ()
+                    | None -> Log.infoOnce ("Cannot render animated model without an assimp scene for '" + scstring animatedModel + "'.")
             | _ -> Log.infoOnce ("Cannot render animated model with a non-animated model asset '" + scstring animatedModel + "'.")
         | _ -> Log.infoOnce ("Cannot render animated model due to unloadable asset(s) for '" + scstring animatedModel + "'.")
 
@@ -1308,7 +1284,7 @@ type [<ReferenceEquality>] GlRenderer3d =
 
                 // render animated surfaces
                 for surface in modelAsset.Surfaces do
-                    match modelAsset.AnimatedSceneOpt with
+                    match modelAsset.SceneOpt with
                     | Some scene ->
 
                         // render animated meshes
@@ -1345,7 +1321,7 @@ type [<ReferenceEquality>] GlRenderer3d =
                                     else renderer.RenderTasks.RenderSurfacesDeferredAnimatedRelative.Add (struct (time, animations, surface), struct (bones, SList.singleton struct (modelMatrix, texCoordsOffset, properties)))
 
                     // unable to render
-                    | Some _ | None -> ()
+                    | None -> Log.infoOnce ("Cannot render animated model without an assimp scene for '" + scstring animatedModel + "'.")
             | _ -> Log.infoOnce ("Cannot render animated model with a non-animated model asset '" + scstring animatedModel + "'.")
         | _ -> Log.infoOnce ("Cannot render animated model due to unloadable asset(s) for '" + scstring animatedModel + "'.")
 
@@ -2373,7 +2349,7 @@ type [<ReferenceEquality>] GlRenderer3d =
               InvertRoughness = Constants.Render.InvertRoughnessDefault }
 
         // get albedo metadata and texture
-        let (albedoMetadata, albedoTexture) = OpenGL.Texture.TryCreateTextureFiltered (Constants.OpenGl.CompressedColorTextureFormat, "Assets/Default/MaterialAlbedo.png") |> Either.getRight
+        let (albedoMetadata, albedoTexture) = OpenGL.Texture.TryCreateTextureFiltered (Constants.OpenGl.CompressedColorTextureFormat, "Assets/Default/MaterialAlbedo.tiff") |> Either.getRight
         OpenGL.Hl.Assert ()
 
         // create default physically-based material
@@ -2381,12 +2357,12 @@ type [<ReferenceEquality>] GlRenderer3d =
             { MaterialProperties = physicallyBasedMaterialProperties
               AlbedoMetadata = albedoMetadata
               AlbedoTexture = albedoTexture
-              RoughnessTexture = OpenGL.Texture.TryCreateTextureFiltered (Constants.OpenGl.CompressedColorTextureFormat, "Assets/Default/MaterialRoughness.png") |> Either.getRight |> snd
-              MetallicTexture = OpenGL.Texture.TryCreateTextureFiltered (Constants.OpenGl.CompressedColorTextureFormat, "Assets/Default/MaterialMetallic.png") |> Either.getRight |> snd
-              AmbientOcclusionTexture = OpenGL.Texture.TryCreateTextureFiltered (Constants.OpenGl.CompressedColorTextureFormat, "Assets/Default/MaterialAmbientOcclusion.png") |> Either.getRight |> snd
-              EmissionTexture = OpenGL.Texture.TryCreateTextureFiltered (Constants.OpenGl.CompressedColorTextureFormat, "Assets/Default/MaterialEmission.png") |> Either.getRight |> snd
-              NormalTexture = OpenGL.Texture.TryCreateTextureFiltered (Constants.OpenGl.UncompressedTextureFormat, "Assets/Default/MaterialNormal.png") |> Either.getRight |> snd
-              HeightTexture = OpenGL.Texture.TryCreateTextureFiltered (Constants.OpenGl.CompressedColorTextureFormat, "Assets/Default/MaterialHeight.png") |> Either.getRight |> snd
+              RoughnessTexture = OpenGL.Texture.TryCreateTextureFiltered (Constants.OpenGl.CompressedColorTextureFormat, "Assets/Default/MaterialRoughness.tiff") |> Either.getRight |> snd
+              MetallicTexture = OpenGL.Texture.TryCreateTextureFiltered (Constants.OpenGl.CompressedColorTextureFormat, "Assets/Default/MaterialMetallic.tiff") |> Either.getRight |> snd
+              AmbientOcclusionTexture = OpenGL.Texture.TryCreateTextureFiltered (Constants.OpenGl.CompressedColorTextureFormat, "Assets/Default/MaterialAmbientOcclusion.tiff") |> Either.getRight |> snd
+              EmissionTexture = OpenGL.Texture.TryCreateTextureFiltered (Constants.OpenGl.CompressedColorTextureFormat, "Assets/Default/MaterialEmission.tiff") |> Either.getRight |> snd
+              NormalTexture = OpenGL.Texture.TryCreateTextureFiltered (Constants.OpenGl.UncompressedTextureFormat, "Assets/Default/MaterialNormal.tiff") |> Either.getRight |> snd
+              HeightTexture = OpenGL.Texture.TryCreateTextureFiltered (Constants.OpenGl.CompressedColorTextureFormat, "Assets/Default/MaterialHeight.tiff") |> Either.getRight |> snd
               TextureMinFilterOpt = None
               TextureMagFilterOpt = None
               TwoSided = false }
@@ -2519,12 +2495,11 @@ type [<ReferenceEquality>] GlRenderer3d =
             OpenGL.Gl.DeleteTextures [|renderer.RenderPhysicallyBasedMaterial.EmissionTexture|]
             OpenGL.Gl.DeleteTextures [|renderer.RenderPhysicallyBasedMaterial.NormalTexture|]
             OpenGL.Gl.DeleteTextures [|renderer.RenderPhysicallyBasedMaterial.HeightTexture|]
-            for lightMap in renderer.RenderLightMaps.Values do
-                OpenGL.LightMap.DestroyLightMap lightMap
+            for lightMap in renderer.RenderLightMaps.Values do OpenGL.LightMap.DestroyLightMap lightMap
             renderer.RenderLightMaps.Clear ()
-            for renderPackage in renderer.RenderPackages.Values do
-                OpenGL.Texture.DeleteTexturesMemoized renderPackage.PackageState.TextureMemo
-                OpenGL.CubeMap.DeleteCubeMapsMemoized renderPackage.PackageState.CubeMapMemo
+            let renderPackages = renderer.RenderPackages |> Seq.map (fun entry -> entry.Value)
+            let renderAssets = renderPackages |> Seq.map (fun package -> package.Assets.Values) |> Seq.concat
+            for (_, asset) in renderAssets do GlRenderer3d.freeRenderAsset asset renderer
             renderer.RenderPackages.Clear ()
             OpenGL.Framebuffer.DestroyGeometryBuffers renderer.RenderGeometryBuffers
             OpenGL.Framebuffer.DestroyLightMappingBuffers renderer.RenderLightMappingBuffers

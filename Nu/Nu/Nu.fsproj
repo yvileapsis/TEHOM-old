@@ -48,6 +48,7 @@
 		<Compile Include="OpenGL\OpenGL.Hl.fs" />
 		<Compile Include="OpenGL\OpenGL.Shader.fs" />
 		<Compile Include="OpenGL\OpenGL.Texture.fs" />
+		<Compile Include="OpenGL\OpenGLAssimp.fs" />
 		<Compile Include="OpenGL\OpenGL.CubeMap.fs" />
 		<Compile Include="OpenGL\OpenGL.LightMap.fs" />
 		<Compile Include="OpenGL\OpenGL.Framebuffer.fs" />
@@ -71,6 +72,7 @@
 		<Compile Include="AssetGraph\AssetTag.fs" />
 		<Compile Include="AssetGraph\AssetTypes.fs" />
 		<Compile Include="AssetGraph\AssetGraph.fs" />
+		<Compile Include="AssetGraph\AssetMemo.fs" />
 		<Compile Include="Physics\Physics.fs" />
 		<Compile Include="Physics\AetherPhysics.fs" />
 		<Compile Include="Physics\BulletPhysics.fs" />
@@ -205,13 +207,17 @@
 		<PackageReference Include="FParsec" Version="1.0.3" />
 		<PackageReference Include="Aether.Physics2D" Version="1.7.0" />
 		<PackageReference Include="Magick.NET-Q8-AnyCPU" Version="7.5.0.1" />
-		<PackageReference Include="Prime" Version="9.13.3" />
+		<PackageReference Include="Prime" Version="9.15.2" />
 		<PackageReference Include="System.Configuration.ConfigurationManager" Version="7.0.0" />
 		<PackageReference Include="Twizzle.ImGuizmo.NET" Version="1.89.4.1" />
 	</ItemGroup>
 
 	<ItemGroup>
 		<ProjectReference Include="..\Nu.Math\Nu.Math.csproj" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Update="FSharp.Core" Version="8.0.100" />
 	</ItemGroup>
 
 </Project>

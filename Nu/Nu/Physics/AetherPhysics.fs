@@ -502,8 +502,8 @@ type [<ReferenceEquality>] AetherPhysicsEngine =
         member physicsEngine.GetBodyToGroundContactNormals bodyId =
             List.filter
                 (fun normal ->
-                    let theta = Vector2.Dot (normal.V2, Vector2.UnitY) |> double |> Math.Acos |> Math.Abs
-                    theta < Math.PI * 0.25)
+                    let theta = Vector2.Dot (normal.V2, Vector2.UnitY) |> acos |> abs
+                    theta < Constants.Physics.GroundAngleMax)
                 ((physicsEngine :> PhysicsEngine).GetBodyContactNormals bodyId)
 
         member physicsEngine.GetBodyToGroundContactNormalOpt bodyId =
@@ -537,13 +537,13 @@ type [<ReferenceEquality>] AetherPhysicsEngine =
             physicsEngine :> PhysicsEngine
 
         member physicsEngine.EnqueueMessage physicsMessage =
-#if HANDLE_PHYSICS_MESSAGES_IMMEDIATE
-            AetherPhysicsEngine.handlePhysicsMessage physicsEngine physicsMessage
-            physicsEngine
-#else
+#if HANDLE_PHYSICS_MESSAGES_DEFERRED
             let physicsMessages = UList.add physicsMessage physicsEngine.PhysicsMessages
             let physicsEngine = { physicsEngine with PhysicsMessages = physicsMessages }
             physicsEngine :> PhysicsEngine
+#else
+            AetherPhysicsEngine.handlePhysicsMessage physicsEngine physicsMessage
+            physicsEngine
 #endif
 
         member physicsEngine.Integrate stepTime physicsMessages =

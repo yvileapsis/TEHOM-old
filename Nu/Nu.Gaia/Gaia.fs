@@ -77,6 +77,9 @@ module Gaia =
     let mutable private newGroupName = ""
     let mutable private groupRename = ""
     let mutable private entityRename = ""
+    let mutable private desiredEyeCenter2d = v2Zero
+    let mutable private desiredEyeCenter3d = v3Zero
+    let mutable private desiredEyeRotation3d = quatIdentity
 
     (* Configuration States *)
 
@@ -151,8 +154,8 @@ module Gaia =
         reloadAllRequested <> 0
 
     (* Memoization *)
-    let mutable toSymbolMemo = new ForgetfulDictionary<obj, Symbol> (HashIdentity.FromFunctions hash objEq)
-    let mutable ofSymbolMemo = new ForgetfulDictionary<Symbol, obj> (HashIdentity.Structural)
+    let mutable toSymbolMemo = new ForgetfulDictionary<struct (Type * obj), Symbol> (HashIdentity.FromFunctions hash objEq)
+    let mutable ofSymbolMemo = new ForgetfulDictionary<struct (Type * Symbol), obj> (HashIdentity.Structural)
 
     (* Initial imgui.ini File Content *)
 
@@ -937,9 +940,9 @@ DockSpace             ID=0x8B93E3BD Window=0xA787BDB4 Pos=0,0 Size=1920,1080 Spl
         tryReloadCode ()
 
     let private resetEye () =
-        world <- World.setEyeCenter2d v2Zero world
-        world <- World.setEyeCenter3d Constants.Engine.EyeCenter3dDefault world
-        world <- World.setEyeRotation3d quatIdentity world
+        desiredEyeCenter2d <- v2Zero
+        desiredEyeCenter3d <- Constants.Engine.EyeCenter3dDefault
+        desiredEyeRotation3d <- quatIdentity
 
     let private toggleAdvancing () =
         if not world.Advancing then snapshot ()
@@ -1142,8 +1145,7 @@ DockSpace             ID=0x8B93E3BD Window=0xA787BDB4 Pos=0,0 Size=1920,1080 Spl
             match dragEyeState with
             | DragEyeCenter2d (entityDragOffset, mousePositionScreenOrig) ->
                 let mousePositionScreen = World.getMousePosition2dScreen world
-                let eyeCenter = (entityDragOffset - mousePositionScreenOrig) + -Constants.Gaia.EyeSpeed * (mousePositionScreen - mousePositionScreenOrig)
-                world <- World.setEyeCenter2d eyeCenter world
+                desiredEyeCenter2d <- (entityDragOffset - mousePositionScreenOrig) + -Constants.Gaia.EyeSpeed * (mousePositionScreen - mousePositionScreenOrig)
                 dragEyeState <- DragEyeCenter2d (entityDragOffset, mousePositionScreenOrig)
             | DragEyeInactive -> ()
 
@@ -1165,27 +1167,27 @@ DockSpace             ID=0x8B93E3BD Window=0xA787BDB4 Pos=0,0 Size=1920,1080 Spl
                 if ImGui.IsShiftDown () && not (ImGui.IsKeyDown ImGuiKey.Enter) then 0.025f
                 else 0.05f
             if ImGui.IsKeyDown ImGuiKey.W && ImGui.IsCtrlReleased () then
-                world <- World.setEyeCenter3d (position + Vector3.Transform (v3Forward, rotation) * moveSpeed) world
+                desiredEyeCenter3d <- position + Vector3.Transform (v3Forward, rotation) * moveSpeed
             if ImGui.IsKeyDown ImGuiKey.S && ImGui.IsCtrlReleased () then
-                world <- World.setEyeCenter3d (position + Vector3.Transform (v3Back, rotation) * moveSpeed) world
+                desiredEyeCenter3d <- position + Vector3.Transform (v3Back, rotation) * moveSpeed
             if ImGui.IsKeyDown ImGuiKey.A && ImGui.IsCtrlReleased () then
-                world <- World.setEyeCenter3d (position + Vector3.Transform (v3Left, rotation) * moveSpeed) world
+                desiredEyeCenter3d <- position + Vector3.Transform (v3Left, rotation) * moveSpeed
             if ImGui.IsKeyDown ImGuiKey.D && ImGui.IsCtrlReleased () then
-                world <- World.setEyeCenter3d (position + Vector3.Transform (v3Right, rotation) * moveSpeed) world
+                desiredEyeCenter3d <- position + Vector3.Transform (v3Right, rotation) * moveSpeed
             if ImGui.IsKeyDown ImGuiKey.Q && ImGui.IsCtrlReleased () then
                 let rotation' = rotation * Quaternion.CreateFromAxisAngle (v3Right, turnSpeed)
-                if Vector3.Dot (rotation'.Forward, v3Up) < 0.999f then world <- World.setEyeRotation3d rotation' world
+                if Vector3.Dot (rotation'.Forward, v3Up) < 0.999f then desiredEyeRotation3d <- rotation'
             if ImGui.IsKeyDown ImGuiKey.E && ImGui.IsCtrlReleased () then
                 let rotation' = rotation * Quaternion.CreateFromAxisAngle (v3Left, turnSpeed)
-                if Vector3.Dot (rotation'.Forward, v3Down) < 0.999f then world <- World.setEyeRotation3d rotation' world
+                if Vector3.Dot (rotation'.Forward, v3Down) < 0.999f then desiredEyeRotation3d <- rotation'
             if ImGui.IsKeyDown ImGuiKey.UpArrow && ImGui.IsAltReleased () then
-                world <- World.setEyeCenter3d (position + Vector3.Transform (v3Up, rotation) * moveSpeed) world
+                desiredEyeCenter3d <- position + Vector3.Transform (v3Up, rotation) * moveSpeed
             if ImGui.IsKeyDown ImGuiKey.DownArrow && ImGui.IsAltReleased () then
-                world <- World.setEyeCenter3d (position + Vector3.Transform (v3Down, rotation) * moveSpeed) world
+                desiredEyeCenter3d <- position + Vector3.Transform (v3Down, rotation) * moveSpeed
             if ImGui.IsKeyDown ImGuiKey.LeftArrow && ImGui.IsAltReleased () then
-                world <- World.setEyeRotation3d (Quaternion.CreateFromAxisAngle (v3Up, turnSpeed) * rotation) world
+                desiredEyeRotation3d <- Quaternion.CreateFromAxisAngle (v3Up, turnSpeed) * rotation
             if ImGui.IsKeyDown ImGuiKey.RightArrow && ImGui.IsAltReleased () then
-                world <- World.setEyeRotation3d (Quaternion.CreateFromAxisAngle (v3Down, turnSpeed) * rotation) world
+                desiredEyeRotation3d <- Quaternion.CreateFromAxisAngle (v3Down, turnSpeed) * rotation
 
     let private updateHotkeys entityHierarchyFocused =
         if not (modal ()) then
@@ -1241,11 +1243,11 @@ DockSpace             ID=0x8B93E3BD Window=0xA787BDB4 Pos=0,0 Size=1920,1080 Spl
         if ImGui.IsMouseDoubleClicked ImGuiMouseButton.Left && ImGui.IsItemHovered () then
             if not (entity.GetAbsolute world) then
                 if entity.GetIs2d world then
-                    world <- World.setEyeCenter2d (entity.GetCenter world).V2 world
+                    desiredEyeCenter2d <- (entity.GetCenter world).V2
                 else
                     let eyeRotation = World.getEyeRotation3d world
                     let eyeCenterOffset = Vector3.Transform (Constants.Engine.EyeCenter3dOffset, eyeRotation)
-                    world <- World.setEyeCenter3d (entity.GetPosition world + eyeCenterOffset) world
+                    desiredEyeCenter3d <- entity.GetPosition world + eyeCenterOffset
         if ImGui.BeginPopupContextItem () then
             selectEntityOpt (Some entity)
             if ImGui.MenuItem "Cut" then tryCutSelectedEntity () |> ignore<bool>
@@ -1736,6 +1738,15 @@ DockSpace             ID=0x8B93E3BD Window=0xA787BDB4 Pos=0,0 Size=1920,1080 Spl
         // transfer to world mutation mode
         world <- worldOld
 
+        // see if sync eyes to editor is desirable
+        let eyeCenter2d = World.getEyeCenter2d world
+        let eyeCenter3d = World.getEyeCenter3d world
+        let eyeRotation3d = World.getEyeRotation3d world
+        let eyeChangedElsewhere =
+            eyeCenter2d <> desiredEyeCenter2d ||
+            eyeCenter3d <> desiredEyeCenter3d ||
+            eyeRotation3d <> desiredEyeRotation3d
+
         // enable global docking
         ImGui.DockSpaceOverViewport (ImGui.GetMainViewport (), ImGuiDockNodeFlags.PassthruCentralNode) |> ignore<uint>
 
@@ -1748,10 +1759,6 @@ DockSpace             ID=0x8B93E3BD Window=0xA787BDB4 Pos=0,0 Size=1920,1080 Spl
 
                 // track state for hot key input
                 let mutable entityHierarchyFocused = false
-
-                // update eye input at start of loop to avoid visual lag
-                updateEyeDrag ()
-                updateEyeTravel ()
 
                 // viewport interaction
                 let io = ImGui.GetIO ()
@@ -1817,8 +1824,8 @@ DockSpace             ID=0x8B93E3BD Window=0xA787BDB4 Pos=0,0 Size=1920,1080 Spl
                     //ImGuizmo.RecomposeMatrixFromComponents (&eyeCenter.[0], &eyeRotation.[0], &eyeScale.[0], &view.[0])
                     //ImGuizmo.ViewManipulate (&view.[0], 1.0f, v2 1400.0f 100.0f, v2 150.0f 150.0f, uint 0x10101010)
                     //ImGuizmo.DecomposeMatrixToComponents (&view.[0], &eyeCenter.[0], &eyeRotation.[0], &eyeScale.[0])
-                    //world <- World.setEyeCenter3d (eyeCenter |> Matrix4x4.CreateFromArray).Translation world
-                    //world <- World.setEyeRotation3d (eyeRotation |> Matrix4x4.CreateFromArray |> Quaternion.CreateFromRotationMatrix) world
+                    //eyeCenter3d <- (eyeCenter |> Matrix4x4.CreateFromArray).Translation
+                    //eyeRotation3d <- (eyeRotation |> Matrix4x4.CreateFromArray |> Quaternion.CreateFromRotationMatrix)
 
                     // light probe bounds manipulation
                     match selectedEntityOpt with
@@ -2359,9 +2366,9 @@ DockSpace             ID=0x8B93E3BD Window=0xA787BDB4 Pos=0,0 Size=1920,1080 Spl
                     if showNewProjectDialog then
 
                         // ensure template directory exists
-                        let programDir = Reflection.Assembly.GetEntryAssembly().Location |> Path.GetDirectoryName 
-                        let slnDir = programDir + "/../../../../.." |> Path.GetFullPath
-                        let templateDir = programDir + "/../../../../Nu.Template" |> Path.GetFullPath
+                        let programDir = Reflection.Assembly.GetEntryAssembly().Location |> Path.GetDirectoryName |> fun dir -> dir.Replace ("\\", "/")
+                        let slnDir = programDir + "/../../../../.." |> Path.GetFullPath |> fun dir -> dir.Replace ("\\", "/")
+                        let templateDir = programDir + "/../../../../Nu.Template" |> Path.GetFullPath |> fun dir -> dir.Replace ("\\", "/")
                         if Directory.Exists templateDir then
 
                             // prompt user to create new project
@@ -2372,14 +2379,14 @@ DockSpace             ID=0x8B93E3BD Window=0xA787BDB4 Pos=0,0 Size=1920,1080 Spl
                                 ImGui.SameLine ()
                                 ImGui.InputText ("##newProjectName", &newProjectName, 4096u) |> ignore<bool>
                                 newProjectName <- newProjectName.Replace(" ", "").Replace("\t", "").Replace(".", "")
-                                let templateIdentifier = templateDir.Replace("/", "\\") // this is what dotnet knows the template as for uninstall...
+                                let templateIdentifier = templateDir.Replace ("/", "\\") // this is what dotnet knows the template as for uninstall...
                                 let templateFileName = "Nu.Template.fsproj"
-                                let projectsDir = programDir + "/../../../../../Projects" |> Path.GetFullPath
-                                let newProjectDir = projectsDir + "/" + newProjectName |> Path.GetFullPath
+                                let projectsDir = programDir + "/../../../../../Projects" |> Path.GetFullPath |> fun dir -> dir.Replace ("\\", "/")
+                                let newProjectDir = projectsDir + "/" + newProjectName |> Path.GetFullPath |> fun dir -> dir.Replace ("\\", "/")
                                 let newProjectDllPath = newProjectDir + "/bin/" + Constants.Gaia.BuildName + "/net7.0/" + newProjectName + ".dll"
                                 let newFileName = newProjectName + ".fsproj"
-                                let newProject = newProjectDir + "/" + newFileName |> Path.GetFullPath
-                                let validName = Array.notExists (fun char -> newProjectName.Contains (string char)) (Path.GetInvalidPathChars ())
+                                let newProject = newProjectDir + "/" + newFileName |> Path.GetFullPath |> fun dir -> dir.Replace ("\\", "/")
+                                let validName = not (String.IsNullOrWhiteSpace newProjectName) && Array.notExists (fun char -> newProjectName.Contains (string char)) (Path.GetInvalidPathChars ())
                                 if not validName then ImGui.Text "Invalid project name!"
                                 let validDirectory = not (Directory.Exists newProjectDir)
                                 if not validDirectory then ImGui.Text "Project already exists!"
@@ -2441,7 +2448,7 @@ DockSpace             ID=0x8B93E3BD Window=0xA787BDB4 Pos=0,0 Size=1920,1080 Spl
                                         Log.info ("Project '" + newProjectName + "'" + "created.")
 
                                         // configure editor to open new project then exit
-                                        let gaiaState = GaiaState.make newProjectDllPath (Some "Title") openProjectImperativeExecution
+                                        let gaiaState = GaiaState.make newProjectDllPath (Some "Title") openProjectImperativeExecution true desiredEyeCenter2d desiredEyeCenter3d desiredEyeRotation3d (World.getMasterSoundVolume world) (World.getMasterSongVolume world)
                                         let gaiaFilePath = (Assembly.GetEntryAssembly ()).Location
                                         let gaiaDirectory = Path.GetDirectoryName gaiaFilePath
                                         try File.WriteAllText (gaiaDirectory + "/" + Constants.Gaia.StateFilePath, scstring gaiaState)
@@ -2487,7 +2494,7 @@ DockSpace             ID=0x8B93E3BD Window=0xA787BDB4 Pos=0,0 Size=1920,1080 Spl
                                 String.notEmpty openProjectFilePath &&
                                 File.Exists openProjectFilePath then
                                 showOpenProjectDialog <- false
-                                let gaiaState = GaiaState.make openProjectFilePath (Some openProjectEditMode) openProjectImperativeExecution
+                                let gaiaState = GaiaState.make openProjectFilePath (Some openProjectEditMode) openProjectImperativeExecution true desiredEyeCenter2d desiredEyeCenter3d desiredEyeRotation3d (World.getMasterSoundVolume world) (World.getMasterSongVolume world)
                                 let gaiaFilePath = (Assembly.GetEntryAssembly ()).Location
                                 let gaiaDirectory = Path.GetDirectoryName gaiaFilePath
                                 try File.WriteAllText (gaiaDirectory + "/" + Constants.Gaia.StateFilePath, scstring gaiaState)
@@ -2622,7 +2629,7 @@ DockSpace             ID=0x8B93E3BD Window=0xA787BDB4 Pos=0,0 Size=1920,1080 Spl
                         if ImGui.BeginPopupModal (title, &showConfirmExitDialog) then
                             ImGui.Text "Any unsaved changes will be lost."
                             if ImGui.Button "Okay" || ImGui.IsKeyPressed ImGuiKey.Enter then
-                                let gaiaState = GaiaState.make projectDllPath (Some projectEditMode) projectImperativeExecution
+                                let gaiaState = GaiaState.make projectDllPath (Some projectEditMode) projectImperativeExecution false desiredEyeCenter2d desiredEyeCenter3d desiredEyeRotation3d (World.getMasterSoundVolume world) (World.getMasterSongVolume world)
                                 let gaiaFilePath = (Assembly.GetEntryAssembly ()).Location
                                 let gaiaDirectory = Path.GetDirectoryName gaiaFilePath
                                 try File.WriteAllText (gaiaDirectory + "/" + Constants.Gaia.StateFilePath, scstring gaiaState)
@@ -2687,9 +2694,19 @@ DockSpace             ID=0x8B93E3BD Window=0xA787BDB4 Pos=0,0 Size=1920,1080 Spl
                     ImGui.ShowStackToolWindow ()
 
                 // process non-widget mouse input and hotkeys
+                updateEyeDrag ()
+                updateEyeTravel ()
                 updateEntityContext ()
                 updateEntityDrag ()
                 updateHotkeys entityHierarchyFocused
+                if not eyeChangedElsewhere then
+                    world <- World.setEyeCenter2d desiredEyeCenter2d world
+                    world <- World.setEyeCenter3d desiredEyeCenter3d world
+                    world <- World.setEyeRotation3d desiredEyeRotation3d world
+                else
+                    desiredEyeCenter2d <- World.getEyeCenter2d world
+                    desiredEyeCenter3d <- World.getEyeCenter3d world
+                    desiredEyeRotation3d <- World.getEyeRotation3d world
 
                 // reloading assets dialog
                 if reloadAssetsRequested > 0 then
@@ -2759,6 +2776,16 @@ DockSpace             ID=0x8B93E3BD Window=0xA787BDB4 Pos=0,0 Size=1920,1080 Spl
         world <- wtemp
         openProjectFilePath <- gaiaState.ProjectDllPath
         openProjectImperativeExecution <- gaiaState.ProjectImperativeExecution
+        if  not (String.IsNullOrWhiteSpace gaiaState.ProjectDllPath) &&
+            not gaiaState.ProjectFreshlyLoaded then
+            desiredEyeCenter2d <- gaiaState.DesiredEyeCenter2d
+            desiredEyeCenter3d <- gaiaState.DesiredEyeCenter3d
+            desiredEyeRotation3d <- gaiaState.DesiredEyeRotation3d
+            world <- World.setEyeCenter2d desiredEyeCenter2d world
+            world <- World.setEyeCenter3d desiredEyeCenter3d world
+            world <- World.setEyeRotation3d desiredEyeRotation3d world
+            world <- World.setMasterSoundVolume gaiaState.MasterSoundVolume world
+            world <- World.setMasterSongVolume gaiaState.MasterSongVolume world
         targetDir <- targetDir_
         projectDllPath <- openProjectFilePath
         projectFileDialogState <- ImGuiFileDialogState targetDir
@@ -2828,9 +2855,6 @@ DockSpace             ID=0x8B93E3BD Window=0xA787BDB4 Pos=0,0 Size=1920,1080 Spl
                 let world = World.subscribe handleNuMouseButton Game.MouseRightUpEvent Game world
                 let world = World.subscribe handleNuSelectedScreenOptChange Game.SelectedScreenOpt.ChangeEvent Game world
                 let world = World.subscribe handleNuRender Game.RenderEvent Game world
-
-                // no song playback in editor by default
-                let world = World.setMasterSongVolume 0.0f world
                 
                 // run the world
                 runWithCleanUp gaiaState targetDir screen world
